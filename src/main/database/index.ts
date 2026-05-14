@@ -60,6 +60,30 @@ function saveDatabase() {
   fs.writeFileSync(dbPath, buffer)
 }
 
+
+// Helper: execute a parameterized query and return rows as array of arrays
+function execQuery(sql: string, params: any[] = []): any[][] {
+  const stmt = db.prepare(sql)
+  if (params.length > 0) stmt.bind(params)
+  const rows: any[][] = []
+  while (stmt.step()) {
+    rows.push(stmt.get())
+  }
+  stmt.free()
+  return rows
+}
+
+// Helper: execute a parameterized query and return raw sql.js QueryExecResult[]
+function execQueryResult(sql: string, params: any[] = []): { columns: string[]; values: any[][] }[] {
+  const values = execQuery(sql, params)
+  if (values.length === 0) return []
+  // Build generic column names from first row width
+  const colCount = values[0] ? values[0].length : 0
+  const columns: string[] = []
+  for (let i = 0; i < colCount; i++) columns.push('col' + i)
+  return [{ columns, values }]
+}
+
 function createTables() {
   db.run(`
     CREATE TABLE IF NOT EXISTS ledgers (
@@ -329,7 +353,7 @@ export function getRecords(ledgerId?: number): Record[] {
     sql = 'SELECT * FROM records WHERE is_deleted = 0 AND ledger_id = ? ORDER BY date DESC'
     params.push(ledgerId)
   }
-  const result = db.exec(sql, params)
+  const result = execQueryResult(sql, params)
   if (result.length === 0) return []
   return result[0].values.map(row => mapRecordRow(row))
 }
@@ -369,7 +393,7 @@ export function addRecord(record: Omit<Record, 'id' | 'createdAt' | 'updatedAt'>
 }
 
 export function updateRecord(id: number, record: Partial<Omit<Record, 'id' | 'createdAt' | 'updatedAt'>>): void {
-  const oldRows = db.exec('SELECT * FROM records WHERE id = ?', [id])
+  const oldRows = execQueryResult('SELECT * FROM records WHERE id = ?', [id])
   if (oldRows.length > 0 && oldRows[0].values.length > 0) {
     reverseRecordBalance(mapRecordRow(oldRows[0].values[0]))
   }
@@ -399,7 +423,7 @@ export function updateRecord(id: number, record: Partial<Omit<Record, 'id' | 'cr
   stmt.run(values)
   stmt.free()
 
-  const newRows = db.exec('SELECT * FROM records WHERE id = ?', [id])
+  const newRows = execQueryResult('SELECT * FROM records WHERE id = ?', [id])
   if (newRows.length > 0 && newRows[0].values.length > 0) {
     applyRecordBalance(mapRecordRow(newRows[0].values[0]))
   }
@@ -408,7 +432,7 @@ export function updateRecord(id: number, record: Partial<Omit<Record, 'id' | 'cr
 }
 
 export function deleteRecord(id: number): void {
-  const oldRows = db.exec('SELECT * FROM records WHERE id = ?', [id])
+  const oldRows = execQueryResult('SELECT * FROM records WHERE id = ?', [id])
   if (oldRows.length > 0 && oldRows[0].values.length > 0) {
     reverseRecordBalance(mapRecordRow(oldRows[0].values[0]))
   }
@@ -435,7 +459,7 @@ export function transferBetweenAccounts(
 }
 
 export function refundRecord(originalRecordId: number, refundAmount: number, shippingFee: number, note?: string): void {
-  const oldRows = db.exec('SELECT * FROM records WHERE id = ?', [originalRecordId])
+  const oldRows = execQueryResult('SELECT * FROM records WHERE id = ?', [originalRecordId])
   if (oldRows.length === 0 || oldRows[0].values.length === 0) {
     throw new Error('Record not found')
   }
@@ -484,7 +508,7 @@ export function getAccounts(ledgerId?: number): Account[] {
   let sql = 'SELECT * FROM accounts WHERE is_deleted = 0'
   const params: any[] = []
   if (ledgerId !== undefined) { sql += ' AND ledger_id = ?'; params.push(ledgerId) }
-  const result = db.exec(sql, params)
+  const result = execQueryResult(sql, params)
   if (result.length === 0) return []
   return result[0].values.map(row => mapAccountRow(row))
 }
@@ -558,7 +582,7 @@ export function getCategories(ledgerId?: number): Category[] {
   let sql = 'SELECT * FROM categories WHERE is_deleted = 0 ORDER BY sort_order'
   const params: any[] = []
   if (ledgerId !== undefined) { sql = 'SELECT * FROM categories WHERE is_deleted = 0 AND ledger_id = ? ORDER BY sort_order'; params.push(ledgerId) }
-  const result = db.exec(sql, params)
+  const result = execQueryResult(sql, params)
   if (result.length === 0) return []
   return result[0].values.map(row => mapCategoryRow(row))
 }
@@ -663,7 +687,7 @@ export function getBudgets(ledgerId?: number): Budget[] {
   let sql = 'SELECT * FROM budgets'
   const params: any[] = []
   if (ledgerId !== undefined) { sql = 'SELECT * FROM budgets WHERE ledger_id = ?'; params.push(ledgerId) }
-  const result = db.exec(sql, params)
+  const result = execQueryResult(sql, params)
   if (result.length === 0) return []
   return result[0].values.map(row => mapBudgetRow(row))
 }
@@ -745,7 +769,7 @@ function mapUserRow(row: any[]): User {
 }
 
 export function getUserByUsername(username: string): User | null {
-  const result = db.exec('SELECT * FROM users WHERE username = ?', [username])
+  const result = execQueryResult('SELECT * FROM users WHERE username = ?', [username])
   if (result.length === 0 || result[0].values.length === 0) return null
   return mapUserRow(result[0].values[0])
 }
@@ -802,7 +826,7 @@ function mapLogRow(row: any[]): Log {
 export function getLogs(limit?: number): Log[] {
   const sql = limit ? 'SELECT * FROM logs ORDER BY id DESC LIMIT ?' : 'SELECT * FROM logs ORDER BY id DESC'
   const params = limit ? [limit] : []
-  const result = db.exec(sql, params)
+  const result = execQueryResult(sql, params)
   if (result.length === 0) return []
   return result[0].values.map(row => mapLogRow(row))
 }
@@ -925,7 +949,7 @@ export function mergeLedger(sourceId: number, targetId: number): { mergedCategor
     }
   })
 
-  const srcRecs = db.exec('SELECT id, category_id, account_id FROM records WHERE ledger_id = ? AND is_deleted = 0', [sourceId])
+  const srcRecs = execQueryResult('SELECT id, category_id, account_id FROM records WHERE ledger_id = ? AND is_deleted = 0', [sourceId])
   if (srcRecs.length > 0) {
     const upd = db.prepare('UPDATE records SET ledger_id = ?, category_id = ?, account_id = ? WHERE id = ?')
     srcRecs[0].values.forEach(r => {
@@ -942,7 +966,7 @@ export function mergeLedger(sourceId: number, targetId: number): { mergedCategor
   db.run('UPDATE ledgers SET is_deleted = 1, updated_at = ? WHERE id = ?', [new Date().toISOString(), sourceId])
   saveDatabase()
 
-  const cnt = db.exec('SELECT COUNT(*) FROM records WHERE ledger_id = ? AND is_deleted = 0', [targetId])
+  const cnt = execQueryResult('SELECT COUNT(*) FROM records WHERE ledger_id = ? AND is_deleted = 0', [targetId])
   return {
     mergedCategories, mergedAccounts,
     mergedRecords: cnt.length > 0 ? cnt[0].values[0][0] as number : 0

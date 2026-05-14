@@ -58,3 +58,4 @@ test_*.py
 accounting.html
 dogfood-output/
 
+android-sdk/
