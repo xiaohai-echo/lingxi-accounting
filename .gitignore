@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+out/
+build/
+
+# Electron
+release/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Android / Capacitor
+android/app/build/
+android/.gradle/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+*.apk
+*.aab
+
+# Superpowers brainstorming
+.superpowers/
+
+# Temp test files
+test_*.js
+test_*.py
+accounting.html
+dogfood-output/
+
