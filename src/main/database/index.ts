@@ -885,6 +885,40 @@ export function clearLogs(): void {
   saveDatabase()
 }
 
+
+// ─── CSV Export ────────────────────────────────────────────
+export function exportCSV(): string {
+  const ledgerMap = new Map(getLedgers().map(l => [l.id, l.name]))
+  const categoryMap = new Map(getCategories().map(c => [c.id, c]))
+  const accountMap = new Map(getAccounts().map(a => [a.id, a]))
+
+  const esc = (val: any): string => {
+    const s = val === null || val === undefined ? '' : String(val)
+    if (s.includes(',') || s.includes('"') || s.includes('
+')) {
+      return '"' + s.replace(/"/g, '""') + '"'
+    }
+    return s
+  }
+
+  const headers = ['日期', '类型', '分类', '金额', '账户', '备注', '创建时间']
+  const rows = getRecords()
+    .filter(r => !r.isDeleted)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(r => {
+      const cat = categoryMap.get(r.categoryId)
+      const acc = accountMap.get(r.accountId)
+      return [esc(r.date), esc(r.type === 'income' ? '收入' : r.type === 'expense' ? '支出' : '转账'),
+        esc(cat ? cat.icon + ' ' + cat.name : ''),
+        esc(r.amount.toFixed(2)), esc(acc?.name || ''),
+        esc(r.note || ''), esc(r.createdAt || '')
+      ].join(',')
+    })
+
+  return '﻿' + [headers.join(','), ...rows].join('
+')
+}
+
 // ─── Import / Export ────────────────────────────────────────
 
 export function exportData(): string {

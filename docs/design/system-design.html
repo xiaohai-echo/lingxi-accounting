@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>桌面端消费记账应用 - 系统设计文档</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1a1a2e;
+            --secondary: #16213e;
+            --accent: #e94560;
+            --accent-light: #ff6b6b;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+            --bg-dark: #0f0f1a;
+            --bg-card: #1e1e32;
+            --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            --radius: 16px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.8;
+            font-size: 16px;
+        }
+
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 70px;
+            background: rgba(15, 15, 26, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            padding: 0 50px;
+            z-index: 1000;
+        }
+
+        .navbar-brand {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .navbar-nav {
+            display: flex;
+            gap: 30px;
+            margin-left: auto;
+            list-style: none;
+        }
+
+        .navbar-nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            padding: 8px 16px;
+            border-radius: 8px;
+        }
+
+        .navbar-nav a:hover {
+            color: var(--accent);
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 120px 20px 80px;
+            background: 
+                radial-gradient(ellipse at top, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(233, 69, 96, 0.1) 0%, transparent 50%),
+                var(--bg-dark);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            opacity: 0.5;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            background: rgba(233, 69, 96, 0.15);
+            border: 1px solid rgba(233, 69, 96, 0.3);
+            border-radius: 50px;
+            color: var(--accent);
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 30px;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .hero h1 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 4rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #fff 0%, #a0a0a0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: fadeInUp 0.8s ease 0.1s both;
+        }
+
+        .hero-subtitle {
+            font-size: 1.4rem;
+            color: var(--text-muted);
+            margin-bottom: 40px;
+            animation: fadeInUp 0.8s ease 0.2s both;
+        }
+
+        .hero-meta {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            flex-wrap: wrap;
+            animation: fadeInUp 0.8s ease 0.3s both;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .meta-item svg {
+            width: 20px;
+            height: 20px;
+            color: var(--accent);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 40px;
+        }
+
+        section {
+            margin-bottom: 100px;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-number {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            line-height: 50px;
+            background: var(--gradient-1);
+            border-radius: 50%;
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, #fff 0%, #a0a0a0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .section-desc {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 40px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow);
+            border-color: rgba(233, 69, 96, 0.2);
+        }
+
+        .card-title {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--accent);
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: var(--radius);
+            background: var(--bg-card);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 16px 20px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        th {
+            background: rgba(102, 126, 234, 0.1);
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        td {
+            color: var(--text);
+            font-size: 0.95rem;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        code {
+            font-family: 'Fira Code', 'Source Code Pro', monospace;
+            background: rgba(102, 126, 234, 0.15);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #a8a8f0;
+        }
+
+        pre {
+            background: var(--bg-dark);
+            padding: 20px;
+            border-radius: var(--radius);
+            overflow-x: auto;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, var(--bg-card) 0%, rgba(102, 126, 234, 0.05) 100%);
+            border-radius: var(--radius);
+            padding: 35px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-1);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: var(--gradient-1);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .feature-title {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #fff;
+        }
+
+        .feature-desc {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .mermaid {
+            background: var(--bg-card);
+            padding: 30px;
+            border-radius: var(--radius);
+            margin: 30px 0;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: rgba(102, 126, 234, 0.15);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: #667eea;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 60px 20px;
+            background: var(--bg-card);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 1024px) {
+            .navbar {
+                padding: 0 30px;
+            }
+
+            .hero h1 {
+                font-size: 3rem;
+            }
+
+            .container {
+                padding: 60px 20px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .navbar-nav {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero-meta {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .section-title {
+                font-size: 2rem;
+            }
+
+            .card {
+                padding: 25px;
+            }
+        }
+
+        hr {
+            border: none;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            margin: 60px 0;
+        }
+
+        h3 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 40px 0 20px;
+            color: #fff;
+        }
+
+        h4 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin: 30px 0 15px;
+            color: var(--accent);
+        }
+
+        ul, ol {
+            padding-left: 25px;
+            margin: 15px 0;
+        }
+
+        li {
+            margin-bottom: 10px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-brand">💰 记账应用系统设计</div>
+        <ul class="navbar-nav">
+            <li><a href="#architecture">技术架构</a></li>
+            <li><a href="#database">数据库设计</a></li>
+            <li><a href="#modules">核心模块</a></li>
+            <li><a href="#workflows">业务流程</a></li>
+            <li><a href="#ui">界面设计</a></li>
+        </ul>
+    </nav>
+
+    <header class="hero">
+        <div class="hero-content">
+            <div class="hero-badge">📋 系统设计文档 v1.0</div>
+            <h1>桌面端消费记账应用</h1>
+            <p class="hero-subtitle">基于 Electron + React 的智能记账系统设计，包含 AI OCR 识别、飞书云同步等核心功能</p>
+            <div class="hero-meta">
+                <div class="meta-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    <span>2026-05-12</span>
+                </div>
+                <div class="meta-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span>开发团队</span>
+                </div>
+                <div class="meta-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    </svg>
+                    <span>Electron + React</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section id="architecture">
+            <div class="section-header">
+                <div class="section-number">1</div>
+                <h2 class="section-title">技术架构</h2>
+                <p class="section-desc">基于 Electron 的跨平台桌面应用架构</p>
+            </div>
+
+            <div class="grid grid-3">
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3 class="feature-title">Electron 框架</h3>
+                    <p class="feature-desc">跨平台桌面应用框架，支持 Windows、macOS、Linux</p>
+                    <div style="margin-top: 15px;">
+                        <span class="badge">Chromium</span>
+                        <span class="badge">Node.js</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎨</div>
+                    <h3 class="feature-title">React 18</h3>
+                    <p class="feature-desc">现代化的前端框架，提供出色的用户体验</p>
+                    <div style="margin-top: 15px;">
+                        <span class="badge">TypeScript</span>
+                        <span class="badge">Redux</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h3 class="feature-title">AI OCR 识别</h3>
+                    <p class="feature-desc">混合 OCR 方案，本地 + 云端智能识别消费截图</p>
+                    <div style="margin-top: 15px;">
+                        <span class="badge">PaddleOCR</span>
+                        <span class="badge">阿里云 OCR</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">☁️</div>
+                    <h3 class="feature-title">飞书云同步</h3>
+                    <p class="feature-desc">与飞书多维表格双向同步，数据安全可靠</p>
+                    <div style="margin-top: 15px;">
+                        <span class="badge">多维表格</span>
+                        <span class="badge">增量同步</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">💾</div>
+                    <h3 class="feature-title">SQLite 数据库</h3>
+                    <p class="feature-desc">轻量级本地数据库，快速、安全、易于备份</p>
+                    <div style="margin-top: 15px;">
+                        <span class="badge">better-sqlite3</span>
+                        <span class="badge">加密存储</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3 class="feature-title">数据可视化</h3>
+                    <p class="feature-desc">丰富的图表和统计功能，帮助分析消费习惯</p>
+                    <div style="margin-top: 15px;">
+                        <span class="badge">ECharts</span>
+                        <span class="badge">Ant Design</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">🗺️ 系统架构图</h3>
+                <div class="mermaid">
+flowchart TB
+    subgraph Renderer["Electron 渲染进程"]
+        UI["React UI 组件层"]
+        Store["Redux Store 状态管理"]
+        Services["Services API 调用"]
+    end
+    
+    IPC["IPC 通信层"]
+    
+    subgraph Main["Electron 主进程"]
+        DB["Database 模块"]
+        OCR["OCR 模块"]
+        FS["Feishu 模块"]
+        Backup["Backup 模块"]
+    end
+    
+    SQLite[("SQLite 数据库")]
+    CloudOCR["云端 OCR API"]
+    FeishuAPI["飞书 API"]
+    
+    UI <-->|IPC| IPC
+    Store <--> IPC
+    Services <--> IPC
+    
+    IPC <--> DB
+    IPC <--> OCR
+    IPC <--> FS
+    IPC <--> Backup
+    
+    DB <--> SQLite
+    OCR -->|失败降级| CloudOCR
+    FS <--> FeishuAPI
+    
+    style Renderer fill:#e8f4f8,stroke:#333
+    style Main fill:#fff5e6,stroke:#333
+    style SQLite fill:#f0f0f0,stroke:#333
+    style CloudOCR fill:#ffe6e6,stroke:#333
+    style FeishuAPI fill:#e6f0ff,stroke:#333
+                </div>
+            </div>
+        </section>
+
+        <hr>
+
+        <section id="database">
+            <div class="section-header">
+                <div class="section-number">2</div>
+                <h2 class="section-title">数据库设计</h2>
+                <p class="section-desc">基于 SQLite 的本地数据存储方案</p>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">📊 ER 关系图</h3>
+                <div class="mermaid">
+erDiagram
+    ACCOUNTS ||--o{ RECORDS : "账户关联"
+    CATEGORIES ||--o{ RECORDS : "分类关联"
+    CATEGORIES ||--o{ BUDGETS : "预算设置"
+    
+    RECORDS {
+        int id PK "主键"
+        decimal amount "金额"
+        text type "收入/支出"
+        int category_id FK "分类外键"
+        int account_id FK "账户外键"
+        text date "日期"
+        text note "备注"
+        text tags "标签"
+        text attachment "附件"
+        text created_at "创建时间"
+        text updated_at "更新时间"
+        text synced_at "同步时间"
+        int is_deleted "删除标记"
+    }
+    
+    ACCOUNTS {
+        int id PK "主键"
+        text name "账户名称"
+        text type "账户类型"
+        decimal balance "余额"
+        text color "颜色"
+        text icon "图标"
+        text created_at "创建时间"
+        text updated_at "更新时间"
+        int is_deleted "删除标记"
+    }
+    
+    CATEGORIES {
+        int id PK "主键"
+        text name "分类名称"
+        text type "类型"
+        text icon "图标"
+        text color "颜色"
+        int is_default "默认分类"
+        int sort_order "排序"
+        int is_deleted "删除标记"
+    }
+    
+    BUDGETS {
+        int id PK "主键"
+        int category_id FK "分类外键"
+        decimal amount "预算金额"
+        text period "周期"
+        int year "年份"
+        int month "月份"
+        int quarter "季度"
+        text created_at "创建时间"
+        text updated_at "更新时间"
+    }
+                </div>
+            </div>
+
+            <div class="grid grid-2">
+                <div class="card">
+                    <h3 class="card-title">📝 记录表 (records)</h3>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>字段名</th>
+                                    <th>类型</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>id</td><td>INTEGER</td><td>主键，自增</td></tr>
+                                <tr><td>amount</td><td>DECIMAL</td><td>金额</td></tr>
+                                <tr><td>type</td><td>TEXT</td><td>类型：income / expense</td></tr>
+                                <tr><td>category_id</td><td>INTEGER</td><td>分类 ID，外键</td></tr>
+                                <tr><td>account_id</td><td>INTEGER</td><td>账户 ID，外键</td></tr>
+                                <tr><td>date</td><td>TEXT</td><td>日期</td></tr>
+                                <tr><td>note</td><td>TEXT</td><td>备注</td></tr>
+                                <tr><td>tags</td><td>TEXT</td><td>标签（JSON 数组）</td></tr>
+                                <tr><td>attachment</td><td>TEXT</td><td>附件路径</td></tr>
+                                <tr><td>created_at</td><td>TEXT</td><td>创建时间</td></tr>
+                                <tr><td>updated_at</td><td>TEXT</td><td>更新时间</td></tr>
+                                <tr><td>synced_at</td><td>TEXT</td><td>同步时间</td></tr>
+                                <tr><td>is_deleted</td><td>INTEGER</td><td>是否已删除（0/1）</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 class="card-title">🏦 账户表 (accounts)</h3>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>字段名</th>
+                                    <th>类型</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>id</td><td>INTEGER</td><td>主键，自增</td></tr>
+                                <tr><td>name</td><td>TEXT</td><td>账户名称</td></tr>
+                                <tr><td>type</td><td>TEXT</td><td>账户类型</td></tr>
+                                <tr><td>balance</td><td>DECIMAL</td><td>余额</td></tr>
+                                <tr><td>color</td><td>TEXT</td><td>颜色标识</td></tr>
+                                <tr><td>icon</td><td>TEXT</td><td>图标</td></tr>
+                                <tr><td>created_at</td><td>TEXT</td><td>创建时间</td></tr>
+                                <tr><td>updated_at</td><td>TEXT</td><td>更新时间</td></tr>
+                                <tr><td>is_deleted</td><td>INTEGER</td><td>是否已删除（0/1）</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 class="card-title">🏷️ 分类表 (categories)</h3>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>字段名</th>
+                                    <th>类型</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>id</td><td>INTEGER</td><td>主键，自增</td></tr>
+                                <tr><td>name</td><td>TEXT</td><td>分类名称</td></tr>
+                                <tr><td>type</td><td>TEXT</td><td>类型：income / expense</td></tr>
+                                <tr><td>icon</td><td>TEXT</td><td>图标</td></tr>
+                                <tr><td>color</td><td>TEXT</td><td>颜色</td></tr>
+                                <tr><td>is_default</td><td>INTEGER</td><td>是否默认分类（0/1）</td></tr>
+                                <tr><td>sort_order</td><td>INTEGER</td><td>排序</td></tr>
+                                <tr><td>is_deleted</td><td>INTEGER</td><td>是否已删除（0/1）</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 class="card-title">💹 预算表 (budgets)</h3>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>字段名</th>
+                                    <th>类型</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>id</td><td>INTEGER</td><td>主键，自增</td></tr>
+                                <tr><td>category_id</td><td>INTEGER</td><td>分类 ID，外键</td></tr>
+                                <tr><td>amount</td><td>DECIMAL</td><td>预算金额</td></tr>
+                                <tr><td>period</td><td>TEXT</td><td>周期：monthly / quarterly / yearly</td></tr>
+                                <tr><td>year</td><td>INTEGER</td><td>年份</td></tr>
+                                <tr><td>month</td><td>INTEGER</td><td>月份</td></tr>
+                                <tr><td>quarter</td><td>INTEGER</td><td>季度</td></tr>
+                                <tr><td>created_at</td><td>TEXT</td><td>创建时间</td></tr>
+                                <tr><td>updated_at</td><td>TEXT</td><td>更新时间</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <hr>
+
+        <section id="modules">
+            <div class="section-header">
+                <div class="section-number">3</div>
+                <h2 class="section-title">核心模块设计</h2>
+                <p class="section-desc">四大核心功能模块的详细设计</p>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">🤖 OCR 模块 - 智能识别流程</h3>
+                <p style="color: var(--text-muted); margin-bottom: 20px;">
+                    采用本地 + 云端混合方案，优先使用本地 PaddleOCR，失败时自动降级到云端阿里云 OCR
+                </p>
+                <div class="mermaid">
+flowchart TD
+    A[📷 用户上传图片] --> B{本地 PaddleOCR 识别}
+    
+    B -->|成功| C[📝 解析识别结果]
+    B -->|失败| D{云端 OCR 降级}
+    
+    D -->|成功| C
+    D -->|失败| E[❌ 返回错误信息]
+    
+    C --> F[🔍 提取关键信息]
+    F --> G[💰 金额]
+    F --> H[📅 日期]
+    F --> I[🏪 商户]
+    F --> J[🏷️ 类别]
+    
+    G --> K[🖥️ 展示识别结果]
+    H --> K
+    I --> K
+    J --> K
+    
+    K --> L{用户确认}
+    
+    L -->|编辑| M[✏️ 用户修改信息]
+    M --> N{再次确认}
+    N -->|确认| O[💾 保存记录]
+    N -->|取消| P[❎ 取消操作]
+    
+    L -->|直接确认| O
+    
+    O --> Q[📊 更新账户余额]
+    Q --> R[✅ 记录完成]
+    
+    style E fill:#ff6b6b,color:#fff
+    style P fill:#feca57,color:#333
+    style R fill:#51cf66,color:#fff
+                </div>
+                
+                <h4 style="margin-top: 30px;">核心接口定义</h4>
+                <pre><code>interface OcrResult {
+  amount?: number;      // 识别到的金额
+  date?: string;        // 识别到的日期
+  merchant?: string;    // 识别到的商户
+  category?: string;    // 推荐分类
+  rawText: string;      // 原始识别文本
+  confidence: number;   // 识别置信度
+}</code></pre>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">☁️ 飞书同步模块 - 双向数据同步</h3>
+                <p style="color: var(--text-muted); margin-bottom: 20px;">
+                    与飞书多维表格实现实时双向同步，支持增量同步和冲突处理
+                </p>
+                <div class="mermaid">
+flowchart TD
+    A[🚀 开始同步] --> B{同步模式}
+    
+    B -->|手动| C[👆 用户触发]
+    B -->|自动| D[⏰ 定时任务]
+    
+    C --> E[📥 获取本地变更数据]
+    D --> E
+    
+    E --> F[☁️ 查询飞书云端数据]
+    
+    F --> G{🔄 数据对比}
+    G -->|本地更新| H[⬆️ 上传至飞书]
+    G -->|云端更新| I[⬇️ 下载至本地]
+    G -->|双向更新| J[🔀 合并冲突]
+    
+    H --> K[⏱️ 更新 synced_at]
+    I --> K
+    J --> K
+    
+    K --> L[📋 记录同步日志]
+    L --> M[✅ 同步完成]
+    
+    J -->|冲突类型| N[字段级判断]
+    N -->|时间戳| O[⏰ 保留最新]
+    N -->|金额| P[💰 保留本地]
+    N -->|其他| Q[🔄 智能合并]
+    
+    O --> K
+    P --> K
+    Q --> K
+    
+    style J fill:#feca57,color:#333
+    style M fill:#51cf66,color:#fff
+                </div>
+                
+                <h4 style="margin-top: 30px;">数据映射关系</h4>
+                <div class="grid grid-3" style="margin-top: 20px;">
+                    <div style="background: var(--bg-dark); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">📝</div>
+                        <div style="font-weight: 600;">本地记录表</div>
+                        <div style="color: var(--accent);">↔️</div>
+                        <div style="font-weight: 600;">飞书「消费记录」</div>
+                    </div>
+                    <div style="background: var(--bg-dark); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">🏦</div>
+                        <div style="font-weight: 600;">本地账户表</div>
+                        <div style="color: var(--accent);">↔️</div>
+                        <div style="font-weight: 600;">飞书「账户」</div>
+                    </div>
+                    <div style="background: var(--bg-dark); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">🏷️</div>
+                        <div style="font-weight: 600;">本地分类表</div>
+                        <div style="color: var(--accent);">↔️</div>
+                        <div style="font-weight: 600;">飞书「分类」</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">💹 预算管理模块 - 超支预警</h3>
+                <p style="color: var(--text-muted); margin-bottom: 20px;">
+                    实时监控预算使用情况，支持月度/季度/年度多种周期，提供智能预警
+                </p>
+                <div class="mermaid">
+flowchart TD
+    A[🔄 预算检查] --> B[📊 获取当前周期预算]
+    B --> C[📋 查询消费记录]
+    C --> D[🧮 计算已消费金额]
+    D --> E{⚖️ 判断状态}
+    
+    E -->|< 80%| F[✅ 正常进度]
+    E -->|80% - 100%| G[⚠️ 接近预算]
+    E -->|> 100%| H[🚨 已超支]
+    
+    F --> I[📱 更新UI显示]
+    G --> I
+    H --> I
+    
+    I --> J{🚨 超支检测}
+    J -->|是| K[🔔 发送系统通知]
+    J -->|否| L[💚 正常显示]
+    
+    K --> M[📝 记录警告日志]
+    M --> N[✅ 检查完成]
+    L --> N
+    
+    style G fill:#feca57,color:#333
+    style H fill:#ff6b6b,color:#fff
+    style K fill:#feca57,color:#333
+                </div>
+                
+                <h4 style="margin-top: 30px;">预算计算公式</h4>
+                <div class="grid grid-3" style="margin-top: 20px;">
+                    <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2)); padding: 25px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 1.8rem; margin-bottom: 10px;">📊</div>
+                        <div style="font-weight: 600; margin-bottom: 8px;">预算进度</div>
+                        <code style="color: #a8a8f0;">已消费 / 预算 × 100%</code>
+                    </div>
+                    <div style="background: linear-gradient(135deg, rgba(81, 207, 102, 0.2), rgba(39, 174, 96, 0.2)); padding: 25px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 1.8rem; margin-bottom: 10px;">💰</div>
+                        <div style="font-weight: 600; margin-bottom: 8px;">剩余预算</div>
+                        <code style="color: #a8a8f0;">预算 - 已消费</code>
+                    </div>
+                    <div style="background: linear-gradient(135deg, rgba(233, 69, 96, 0.2), rgba(255, 107, 107, 0.2)); padding: 25px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 1.8rem; margin-bottom: 10px;">⚠️</div>
+                        <div style="font-weight: 600; margin-bottom: 8px;">超支金额</div>
+                        <code style="color: #a8a8f0;">已消费 - 预算 (若 > 0)</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <hr>
+
+        <section id="workflows">
+            <div class="section-header">
+                <div class="section-number">4</div>
+                <h2 class="section-title">关键业务流程</h2>
+                <p class="section-desc">核心功能的时序图和交互流程</p>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">📝 记账记录完整流程</h3>
+                <div class="mermaid">
+sequenceDiagram
+    participant U as 用户
+    participant UI as 前端界面
+    participant IPC as IPC通信
+    participant DB as 数据库
+    participant OCR as OCR模块
+    participant FS as 飞书服务
+    
+    rect rgb(240, 248, 255)
+        Note over U,FS: 手动记账流程
+        U->>UI: 点击"添加记录"
+        UI->>U: 显示记账表单
+        U->>UI: 填写记录信息
+        U->>UI: 选择账户和分类
+        U->>UI: 点击保存
+        UI->>IPC: 调用IPC保存记录
+        IPC->>DB: 插入记录数据
+        DB-->>IPC: 返回成功
+        IPC->>DB: 更新账户余额
+        DB-->>IPC: 返回成功
+        IPC-->>UI: 返回保存结果
+        UI->>FS: 触发数据同步
+        FS-->>UI: 同步完成
+        UI->>U: 显示成功提示
+    end
+    
+    rect rgb(255, 250, 240)
+        Note over U,FS: OCR快捷记账流程
+        U->>UI: 点击"OCR识别"
+        UI->>U: 显示上传区域
+        U->>UI: 上传/粘贴截图
+        UI->>OCR: 发送图片识别请求
+        OCR-->>UI: 返回识别结果
+        UI->>U: 显示识别结果
+        U->>UI: 确认/编辑信息
+        U->>UI: 点击保存
+        UI->>IPC: 调用IPC保存记录
+        IPC->>DB: 插入记录数据
+        DB-->>IPC: 返回成功
+        IPC-->>UI: 返回保存结果
+        UI->>U: 显示成功提示
+    end
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">☁️ 飞书同步完整流程</h3>
+                <div class="mermaid">
+sequenceDiagram
+    participant U as 用户
+    participant UI as 前端界面
+    participant IPC as IPC通信
+    participant DB as 本地数据库
+    participant FS as 飞书API
+    
+    rect rgb(240, 255, 240)
+        Note over U,FS: 手动同步流程
+        U->>UI: 点击"同步到飞书"
+        UI->>IPC: 调用同步接口
+        IPC->>DB: 查询未同步记录
+        DB-->>IPC: 返回变更数据
+        IPC->>FS: 上传数据到飞书
+        FS-->>IPC: 返回上传结果
+        IPC->>DB: 更新同步时间戳
+        DB-->>IPC: 更新完成
+        IPC->>FS: 查询飞书变更
+        FS-->>IPC: 返回云端数据
+        IPC->>DB: 合并/更新本地数据
+        DB-->>IPC: 合并完成
+        IPC-->>UI: 返回同步结果
+        UI->>U: 显示同步完成
+    end
+                </div>
+            </div>
+        </section>
+
+        <hr>
+
+        <section id="usecases">
+            <div class="section-header">
+                <div class="section-number">5</div>
+                <h2 class="section-title">系统用例图</h2>
+                <p class="section-desc">用户与系统的交互用例</p>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">👤 用户用例图</h3>
+                <div class="mermaid">
+flowchart LR
+    subgraph Actors["参与者"]
+        U[用户]
+        OCR[OCR引擎]
+        FS[飞书系统]
+    end
+    
+    subgraph UC["用例"]
+        subgraph Record["记账管理"]
+            UC1[添加收支记录]
+            UC2[编辑收支记录]
+            UC3[删除收支记录]
+            UC4[查看记录列表]
+        end
+        
+        subgraph AI["AI功能"]
+            UCF1[OCR快捷记账]
+            UCF2[智能解析识别]
+        end
+        
+        subgraph Account["账户管理"]
+            AC1[创建账户]
+            AC2[管理账户]
+        end
+        
+        subgraph Budget["预算管理"]
+            BG1[设置预算]
+            BG2[查看进度]
+            BG3[超支提醒]
+        end
+        
+        subgraph Sync["数据同步"]
+            SY1[同步到飞书]
+            SY2[从飞书同步]
+        end
+        
+        subgraph IE["导入导出"]
+            IE1[导入CSV/Excel]
+            IE2[导出报表]
+        end
+    end
+    
+    U --> UC1
+    U --> UC2
+    U --> UC3
+    U --> UC4
+    U --> UCF1
+    U --> AC1
+    U --> AC2
+    U --> BG1
+    U --> BG2
+    U --> SY1
+    U --> IE1
+    U --> IE2
+    
+    UCF1 --> OCR
+    OCR --> UCF2
+    UCF2 --> UC1
+    
+    SY1 --> FS
+    SY2 --> FS
+    
+    style Actors fill:#e8f4f8,stroke:#333
+    style Record fill:#fff5e6,stroke:#333
+    style AI fill:#ffe6e6,stroke:#333
+    style Account fill:#e6ffe6,stroke:#333
+    style Budget fill:#e6f0ff,stroke:#333
+    style Sync fill:#f0e6ff,stroke:#333
+    style IE fill:#fff0e6,stroke:#333
+                </div>
+                
+                <h4 style="margin-top: 30px;">核心用例列表</h4>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>用例编号</th>
+                                <th>用例名称</th>
+                                <th>参与者</th>
+                                <th>描述</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>UC-001</td><td>添加收支记录</td><td>用户</td><td>用户手动添加一条收支记录</td></tr>
+                            <tr><td>UC-002</td><td>OCR快捷记账</td><td>用户, OCR引擎</td><td>通过图片识别自动创建记录</td></tr>
+                            <tr><td>UC-003</td><td>管理账户</td><td>用户</td><td>创建、编辑、删除账户</td></tr>
+                            <tr><td>UC-004</td><td>设置预算</td><td>用户</td><td>为分类设置月度/季度/年度预算</td></tr>
+                            <tr><td>UC-005</td><td>查看统计图表</td><td>用户</td><td>查看收支趋势、分类占比等统计信息</td></tr>
+                            <tr><td>UC-006</td><td>飞书数据同步</td><td>用户, 飞书</td><td>与飞书多维表格双向同步数据</td></tr>
+                            <tr><td>UC-007</td><td>导入导出数据</td><td>用户</td><td>导入CSV/Excel，导出各种格式报告</td></tr>
+                            <tr><td>UC-008</td><td>预算超支提醒</td><td>系统</td><td>当消费超过预算时发送提醒</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <hr>
+
+        <section id="ui">
+            <div class="section-header">
+                <div class="section-number">6</div>
+                <h2 class="section-title">界面设计要点</h2>
+                <p class="section-desc">UI/UX 设计规范和页面结构</p>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">🗺️ UI 导航结构</h3>
+                <div class="mermaid">
+flowchart TB
+    A["记账应用"] --> B["Dashboard 首页"]
+    A --> C["记录管理"]
+    A --> D["账户管理"]
+    A --> E["预算管理"]
+    A --> F["数据统计"]
+    A --> G["系统设置"]
+    
+    C --> C1["记录列表"]
+    C --> C2["添加记录"]
+    C --> C3["OCR识别"]
+    
+    D --> D1["账户列表"]
+    D --> D2["添加账户"]
+    D --> D3["账户详情"]
+    
+    E --> E1["预算设置"]
+    E --> E2["预算进度"]
+    
+    F --> F1["收支趋势"]
+    F --> F2["分类统计"]
+    F --> F3["账户分析"]
+    
+    G --> G1["飞书同步"]
+    G --> G2["导入导出"]
+    G --> G3["系统偏好"]
+                </div>
+            </div>
+
+            <div class="grid grid-3">
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3 class="feature-title">Dashboard 首页</h3>
+                    <p class="feature-desc">今日收支概览、本月趋势、快捷操作入口</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📝</div>
+                    <h3 class="feature-title">记录管理</h3>
+                    <p class="feature-desc">记录列表（可筛选/搜索）、添加记录按钮</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📈</div>
+                    <h3 class="feature-title">数据统计</h3>
+                    <p class="feature-desc">多维度图表展示，收支趋势分析</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p><strong>桌面端消费记账应用 - 系统设计文档</strong></p>
+        <p>版本：v1.0 | 创建日期：2026-05-12</p>
+        <p>技术栈：Electron + React 18 + TypeScript + SQLite</p>
+    </footer>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            },
+            themeVariables: {
+                primaryColor: '#667eea',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#764ba2',
+                lineColor: '#a0a0a0',
+                secondaryColor: '#1e1e32',
+                tertiaryColor: '#0f0f1a'
+            }
+        });
+    </script>
+</body>
+</html>

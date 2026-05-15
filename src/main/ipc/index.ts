@@ -1,5 +1,4 @@
-import { ipcMain, dialog } from 'electron'
-import fs from 'fs'
+import { ipcMain } from 'electron'
 import {
   getRecords, addRecord, updateRecord, deleteRecord,
   getAccounts, addAccount, updateAccount, deleteAccount,
@@ -9,7 +8,7 @@ import {
   verifyUser, addUser, updateUser,
   getLogs, addLog, clearLogs,
   transferBetweenAccounts, refundRecord,
-  exportData, importData, getLedgerStats, mergeLedger
+  exportData, importData, exportCSV, getLedgerStats, mergeLedger
 } from '../database'
 
 export function registerIpcHandlers() {
@@ -83,44 +82,13 @@ export function registerIpcHandlers() {
     return { lastSyncAt: null, localDataSize: Buffer.byteLength(data, 'utf-8') }
   })
 
-  // Export / Import
-  ipcMain.handle('export-data', async () => {
-    const { filePath } = await dialog.showSaveDialog({
-      defaultPath: `expense-tracker-export-${new Date().toISOString().slice(0, 10)}.json`,
-      filters: [{ name: 'JSON Files', extensions: ['json'] }]
-    })
-    if (filePath) {
-      fs.writeFileSync(filePath, exportData(), 'utf-8')
-      return { success: true, message: '数据导出成功' }
-    }
-    return { success: false, message: '取消导出' }
-  })
+  // Export / Import — return data only, frontend handles file dialogs
+  ipcMain.handle('export-data', () => exportData())
 
-  ipcMain.handle('import-data', async () => {
-    const { filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{ name: 'JSON Files', extensions: ['json'] }]
-    })
-    if (filePaths && filePaths.length > 0) {
-      const data = fs.readFileSync(filePaths[0], 'utf-8')
-      return importData(data)
-    }
-    return { success: false, message: '取消导入' }
-  })
+  ipcMain.handle('import-data', (_e, jsonStr: string, mode: 'replace' | 'merge') => importData(jsonStr))
 
-  ipcMain.handle('export-csv', async () => {
-    const { filePath } = await dialog.showSaveDialog({
-      defaultPath: `expense-tracker-csv-${new Date().toISOString().slice(0, 10)}.csv`,
-      filters: [{ name: 'CSV Files', extensions: ['csv'] }]
-    })
-    if (filePath) {
-      const records = getRecords()
-      const header = '日期,类型,分类ID,金额,账户ID,备注,创建时间'
-      const rows = records.map(r => `${r.date},${r.type},${r.categoryId},${r.amount},${r.accountId},"${r.note || ''}",${r.createdAt}`)
-      fs.writeFileSync(filePath, '﻿' + [header, ...rows].join('\n'), 'utf-8')
-      return { success: true, message: 'CSV导出成功' }
-    }
-    return { success: false, message: '取消导出' }
+  ipcMain.handle('export-csv', () => {
+    return exportCSV()
   })
 
   // Test data
