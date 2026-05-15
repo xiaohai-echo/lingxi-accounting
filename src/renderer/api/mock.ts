@@ -15,13 +15,21 @@ const PRESET_EXPENSE_CATEGORIES = [
   { name: '购物', icon: '🛒', color: '#45B7D1' },
   { name: '娱乐', icon: '🎮', color: '#96CEB4' },
   { name: '居住', icon: '🏠', color: '#F39C12' },
-  { name: '医疗', icon: '🏥', color: '#FFEAA7' },
+  { name: '医疗', icon: '🏥', color: '#E74C3C' },
   { name: '教育', icon: '📚', color: '#DDA0DD' },
   { name: '通讯', icon: '📱', color: '#1ABC9C' },
   { name: '服饰', icon: '👗', color: '#E91E63' },
   { name: '日用', icon: '🧴', color: '#795548' },
   { name: '人情', icon: '🎁', color: '#FF9800' },
-  { name: '其他', icon: '📦', color: '#9E9E9E' }
+  { name: '水电燃气', icon: '⚡', color: '#FFD700' },
+  { name: '数码电子', icon: '💻', color: '#3498DB' },
+  { name: '运动健身', icon: '🏃', color: '#2ECC71' },
+  { name: '美容美发', icon: '💇', color: '#FF69B4' },
+  { name: '宠物', icon: '🐱', color: '#FFA07A' },
+  { name: '旅行', icon: '✈️', color: '#00BCD4' },
+  { name: '烟酒', icon: '🍺', color: '#A0522D' },
+  { name: '办公', icon: '📎', color: '#607D8B' },
+  { name: '其他支出', icon: '📦', color: '#9E9E9E' }
 ]
 
 const PRESET_INCOME_CATEGORIES = [
@@ -30,16 +38,54 @@ const PRESET_INCOME_CATEGORIES = [
   { name: '投资', icon: '📈', color: '#3498DB' },
   { name: '兼职', icon: '💼', color: '#9B59B6' },
   { name: '理财', icon: '🏦', color: '#1ABC9C' },
+  { name: '红包', icon: '🧧', color: '#FF4500' },
+  { name: '报销', icon: '📋', color: '#8BC34A' },
+  { name: '租金', icon: '🔑', color: '#FF9800' },
+  { name: '退款', icon: '↩️', color: '#00BCD4' },
   { name: '其他收入', icon: '📥', color: '#7F8C8D' }
 ]
 
 const PRESET_ACCOUNTS = [
-  { name: '现金', type: 'cash', color: '#FFD93D', balance: 500, uniqueId: 'cash:现金' },
-  { name: '储蓄卡', type: 'bank', color: '#6BCB77', balance: 50000, uniqueId: '工商尾号8888', bankName: '工商', cardNo: '8888' },
-  { name: '信用卡', type: 'credit', color: '#FF6B6B', balance: 0, uniqueId: '招商尾号6666', bankName: '招商', cardNo: '6666' },
-  { name: '微信', type: 'wechat', color: '#07C160', balance: 2000, uniqueId: '微信-张三', holderName: '张三' },
-  { name: '支付宝', type: 'alipay', color: '#1677FF', balance: 3000, uniqueId: '支付宝-张三', holderName: '张三' }
+  { name: '现金', type: 'cash', color: '#FFD93D', balance: 0, uniqueId: 'cash:现金' },
+  { name: '储蓄卡', type: 'bank', color: '#6BCB77', balance: 0, uniqueId: 'bank:储蓄卡', bankName: '', cardNo: '' },
+  { name: '信用卡', type: 'credit', color: '#FF6B6B', balance: 0, uniqueId: 'credit:信用卡', bankName: '', cardNo: '' },
+  { name: '微信', type: 'wechat', color: '#07C160', balance: 0, uniqueId: 'wechat:微信', holderName: '' },
+  { name: '支付宝', type: 'alipay', color: '#1677FF', balance: 0, uniqueId: 'alipay:支付宝', holderName: '' }
 ]
+
+// Demo account balances (set after records are applied)
+function applyDemoAccountBalances() {
+  const demoConfig: { [key: string]: { balance: number; bankName?: string; cardNo?: string; holderName?: string } } = {
+    '现金':   { balance: 500 },
+    '储蓄卡': { balance: 50000, bankName: '中国工商银行', cardNo: '8888' },
+    '信用卡': { balance: 0,     bankName: '招商银行',     cardNo: '6666' },
+    '微信':   { balance: 2000,  holderName: '张三' },
+    '支付宝': { balance: 3000,  holderName: '张三' }
+  }
+  const ledger2Config: { [key: string]: number } = { '现金': 200, '储蓄卡': 3000, '微信': 1500, '支付宝': 500 }
+  for (const acc of mockAccounts) {
+    const cfg = demoConfig[acc.name]
+    if (cfg && acc.ledgerId === 1) {
+      acc.balance = cfg.balance
+      if (cfg.bankName) acc.bankName = cfg.bankName
+      if (cfg.cardNo) acc.cardNo = cfg.cardNo
+      if (cfg.holderName) acc.holderName = cfg.holderName
+      acc.uniqueId = cfg.bankName ? `${cfg.bankName.replace(/银行$/, '').replace(/^中国/, '')}尾号${cfg.cardNo}` : acc.uniqueId
+    }
+    if (acc.ledgerId === 2 && ledger2Config[acc.name]) {
+      acc.balance = ledger2Config[acc.name]
+      if (acc.type === 'bank' || acc.type === 'credit') {
+        acc.bankName = '中国建设银行'; acc.cardNo = '9999'
+        acc.uniqueId = '建行尾号9999'
+      }
+      if (acc.type === 'wechat' || acc.type === 'alipay') {
+        acc.holderName = '李四'
+        const label = acc.type === 'wechat' ? '微信' : '支付宝'
+        acc.uniqueId = label + '-李四'
+      }
+    }
+  }
+}
 
 function initDemoRecords(): Record[] {
   const d = (offset: number) => {
@@ -47,54 +93,123 @@ function initDemoRecords(): Record[] {
     dt.setDate(dt.getDate() - offset)
     return dt.toISOString().split('T')[0]
   }
-  const ts = (offset: number, h = 8) => {
+  const ts = (offset: number, h = 8, m = 0) => {
     const dt = new Date()
     dt.setDate(dt.getDate() - offset)
-    dt.setHours(h, 0, 0, 0)
+    dt.setHours(h, m, 0, 0)
     return dt.toISOString()
   }
 
-  return [
-    { id: 1, amount: 25.50, type: 'expense', categoryId: 1, accountId: 1, ledgerId: 1, date: d(13), note: '早餐', tags: '', attachment: '', createdAt: ts(13, 8), updatedAt: ts(13, 8), syncedAt: undefined, isDeleted: 0 },
-    { id: 2, amount: 12000.00, type: 'income', categoryId: 13, accountId: 2, ledgerId: 1, date: d(13), note: '5月份工资', tags: '', attachment: '', createdAt: ts(13, 9), updatedAt: ts(13, 9), syncedAt: undefined, isDeleted: 0 },
-    { id: 3, amount: 35.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(12), note: '午餐', tags: '', attachment: '', createdAt: ts(12, 12), updatedAt: ts(12, 12), syncedAt: undefined, isDeleted: 0 },
-    { id: 4, amount: 6.00, type: 'expense', categoryId: 2, accountId: 4, ledgerId: 1, date: d(12), note: '地铁', tags: '', attachment: '', createdAt: ts(12, 8), updatedAt: ts(12, 8), syncedAt: undefined, isDeleted: 0 },
-    { id: 5, amount: 156.80, type: 'expense', categoryId: 3, accountId: 5, ledgerId: 1, date: d(11), note: '日用品', tags: '', attachment: '', createdAt: ts(11, 14), updatedAt: ts(11, 14), syncedAt: undefined, isDeleted: 0 },
-    { id: 6, amount: 88.00, type: 'expense', categoryId: 4, accountId: 3, ledgerId: 1, date: d(10), note: '电影票', tags: '', attachment: '', createdAt: ts(10, 19), updatedAt: ts(10, 19), syncedAt: undefined, isDeleted: 0 },
-    { id: 7, amount: 380.00, type: 'expense', categoryId: 9, accountId: 2, ledgerId: 1, date: d(9), note: '春装外套', tags: '', attachment: '', createdAt: ts(9, 15), updatedAt: ts(9, 15), syncedAt: undefined, isDeleted: 0, refundStatus: 'full', refundAmount: 380.00, shippingFee: 0, refundNote: '尺码不合适', refundDate: d(7) },
-    { id: 8, amount: 200.00, type: 'expense', categoryId: 5, accountId: 2, ledgerId: 1, date: d(8), note: '水电费', tags: '', attachment: '', createdAt: ts(8, 10), updatedAt: ts(8, 10), syncedAt: undefined, isDeleted: 0 },
-    { id: 9, amount: 42.30, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(7), note: '早餐', tags: '', attachment: '', createdAt: ts(7, 7), updatedAt: ts(7, 7), syncedAt: undefined, isDeleted: 0 },
-    { id: 10, amount: 500.00, type: 'income', categoryId: 16, accountId: 5, ledgerId: 1, date: d(6), note: '周末兼职', tags: '', attachment: '', createdAt: ts(6, 18), updatedAt: ts(6, 18), syncedAt: undefined, isDeleted: 0 },
-    { id: 11, amount: 28.00, type: 'expense', categoryId: 1, accountId: 1, ledgerId: 1, date: d(5), note: '午餐', tags: '', attachment: '', createdAt: ts(5, 12), updatedAt: ts(5, 12), syncedAt: undefined, isDeleted: 0 },
-    { id: 12, amount: 15.00, type: 'expense', categoryId: 2, accountId: 1, ledgerId: 1, date: d(5), note: '公交车', tags: '', attachment: '', createdAt: ts(5, 8), updatedAt: ts(5, 8), syncedAt: undefined, isDeleted: 0 },
-    { id: 13, amount: 1200.00, type: 'expense', categoryId: 5, accountId: 2, ledgerId: 1, date: d(4), note: '房租', tags: '', attachment: '', createdAt: ts(4, 9), updatedAt: ts(4, 9), syncedAt: undefined, isDeleted: 0 },
-    { id: 14, amount: 66.00, type: 'expense', categoryId: 8, accountId: 5, ledgerId: 1, date: d(4), note: '手机话费', tags: '', attachment: '', createdAt: ts(4, 11), updatedAt: ts(4, 11), syncedAt: undefined, isDeleted: 0 },
-    { id: 15, amount: 200.00, type: 'expense', categoryId: 11, accountId: 4, ledgerId: 1, date: d(3), note: '同事结婚红包', tags: '', attachment: '', createdAt: ts(3, 10), updatedAt: ts(3, 10), syncedAt: undefined, isDeleted: 0 },
-    { id: 16, amount: 3000.00, type: 'income', categoryId: 17, accountId: 2, ledgerId: 1, date: d(2), note: '理财收益', tags: '', attachment: '', createdAt: ts(2, 9), updatedAt: ts(2, 9), syncedAt: undefined, isDeleted: 0 },
-    { id: 17, amount: 45.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(2), note: '晚餐', tags: '', attachment: '', createdAt: ts(2, 19), updatedAt: ts(2, 19), syncedAt: undefined, isDeleted: 0 },
-    { id: 18, amount: 89.00, type: 'expense', categoryId: 10, accountId: 5, ledgerId: 1, date: d(1), note: '洗发水', tags: '', attachment: '', createdAt: ts(1, 15), updatedAt: ts(1, 15), syncedAt: undefined, isDeleted: 0, refundStatus: 'partial', refundAmount: 50.00, shippingFee: 8.00, refundNote: '质量问题部分退款', refundDate: d(0) },
-    { id: 19, amount: 150.00, type: 'expense', categoryId: 3, accountId: 3, ledgerId: 1, date: d(1), note: '网购零食', tags: '', attachment: '', createdAt: ts(1, 20), updatedAt: ts(1, 20), syncedAt: undefined, isDeleted: 0 },
-    { id: 20, amount: 500.00, type: 'expense', categoryId: 6, accountId: 2, ledgerId: 1, date: d(0), note: '体检', tags: '', attachment: '', createdAt: ts(0, 8), updatedAt: ts(0, 8), syncedAt: undefined, isDeleted: 0 },
-    { id: 21, amount: 2000.00, type: 'transfer', categoryId: 0, accountId: 2, targetAccountId: 4, ledgerId: 1, date: d(3), note: '工资转微信零花', tags: '', attachment: '', createdAt: ts(3, 14), updatedAt: ts(3, 14), syncedAt: undefined, isDeleted: 0 },
-    { id: 22, amount: 1000.00, type: 'transfer', categoryId: 0, accountId: 2, targetAccountId: 5, ledgerId: 1, date: d(1), note: '储蓄卡转支付宝', tags: '', attachment: '', createdAt: ts(1, 10), updatedAt: ts(1, 10), syncedAt: undefined, isDeleted: 0 },
-    { id: 23, amount: 500.00, type: 'transfer', categoryId: 0, accountId: 4, targetAccountId: 1, ledgerId: 1, date: d(0), note: '微信提现到现金', tags: '', attachment: '', createdAt: ts(0, 16), updatedAt: ts(0, 16), syncedAt: undefined, isDeleted: 0 },
+  // Ledger 1 (日常账本): category 1-30, account 1-5
 
-    { id: 24, amount: 2000.00, type: 'income', categoryId: 31, accountId: 7, ledgerId: 2, date: d(13), note: '旅行基金存入', tags: '', attachment: '', createdAt: ts(13, 9), updatedAt: ts(13, 9), syncedAt: undefined, isDeleted: 0 },
-    { id: 25, amount: 580.00, type: 'expense', categoryId: 20, accountId: 7, ledgerId: 2, date: d(9), note: '机票预订', tags: '', attachment: '', createdAt: ts(9, 10), updatedAt: ts(9, 10), syncedAt: undefined, isDeleted: 0 },
-    { id: 26, amount: 350.00, type: 'expense', categoryId: 23, accountId: 7, ledgerId: 2, date: d(6), note: '酒店预订', tags: '', attachment: '', createdAt: ts(6, 11), updatedAt: ts(6, 11), syncedAt: undefined, isDeleted: 0 },
-    { id: 27, amount: 200.00, type: 'expense', categoryId: 19, accountId: 6, ledgerId: 2, date: d(4), note: '旅行零食', tags: '', attachment: '', createdAt: ts(4, 14), updatedAt: ts(4, 14), syncedAt: undefined, isDeleted: 0 },
-    { id: 28, amount: 120.00, type: 'expense', categoryId: 22, accountId: 6, ledgerId: 2, date: d(2), note: '景点门票', tags: '', attachment: '', createdAt: ts(2, 9), updatedAt: ts(2, 9), syncedAt: undefined, isDeleted: 0 },
-    { id: 29, amount: 800.00, type: 'transfer', categoryId: 0, accountId: 7, targetAccountId: 6, ledgerId: 2, date: d(5), note: '储蓄卡转微信', tags: '', attachment: '', createdAt: ts(5, 10), updatedAt: ts(5, 10), syncedAt: undefined, isDeleted: 0 },
+  return [
+    // ======== 账本1: 日常账本 ========
+
+    // --- 5月 (最近7天) ---
+    { id: 1, amount: 18.50, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(0), note: '早餐', createdAt: ts(0,7,30), updatedAt: ts(0,7,30), isDeleted: 0 },
+    { id: 2, amount: 35.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(0), note: '午餐-黄焖鸡', createdAt: ts(0,12,0), updatedAt: ts(0,12,0), isDeleted: 0 },
+    { id: 3, amount: 6.00, type: 'expense', categoryId: 2, accountId: 4, ledgerId: 1, date: d(0), note: '地铁通勤', createdAt: ts(0,8,0), updatedAt: ts(0,8,0), isDeleted: 0 },
+    { id: 4, amount: 28.00, type: 'expense', categoryId: 19, accountId: 5, ledgerId: 1, date: d(0), note: '打印纸+A4文件袋', createdAt: ts(0,14,0), updatedAt: ts(0,14,0), isDeleted: 0 },
+
+    { id: 5, amount: 22.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(1), note: '午餐', createdAt: ts(1,12,0), updatedAt: ts(1,12,0), isDeleted: 0 },
+    { id: 6, amount: 89.00, type: 'expense', categoryId: 10, accountId: 5, ledgerId: 1, date: d(1), note: '洗衣液+洗洁精', createdAt: ts(1,19,0), updatedAt: ts(1,19,0), isDeleted: 0 },
+    { id: 7, amount: 15.00, type: 'expense', categoryId: 16, accountId: 5, ledgerId: 1, date: d(1), note: '猫罐头', createdAt: ts(1,18,0), updatedAt: ts(1,18,0), isDeleted: 0 },
+    { id: 8, amount: 199.00, type: 'expense', categoryId: 7, accountId: 2, ledgerId: 1, date: d(1), note: '技术书籍 x2', createdAt: ts(1,15,0), updatedAt: ts(1,15,0), isDeleted: 0 },
+
+    { id: 9, amount: 45.00, type: 'expense', categoryId: 1, accountId: 3, ledgerId: 1, date: d(2), note: '外卖-烧烤', createdAt: ts(2,20,0), updatedAt: ts(2,20,0), isDeleted: 0 },
+    { id: 10, amount: 380.00, type: 'expense', categoryId: 9, accountId: 2, ledgerId: 1, date: d(2), note: '春装外套', createdAt: ts(2,14,0), updatedAt: ts(2,14,0), isDeleted: 0, refundStatus: 'full', refundAmount: 380.00, shippingFee: 0, refundNote: '尺码不合适退货', refundDate: d(1) },
+    { id: 11, amount: 168.00, type: 'expense', categoryId: 17, accountId: 5, ledgerId: 1, date: d(2), note: '周边游门票', createdAt: ts(2,9,0), updatedAt: ts(2,9,0), isDeleted: 0 },
+
+    { id: 12, amount: 28.00, type: 'expense', categoryId: 1, accountId: 1, ledgerId: 1, date: d(3), note: '午餐', createdAt: ts(3,12,0), updatedAt: ts(3,12,0), isDeleted: 0 },
+    { id: 13, amount: 50.00, type: 'expense', categoryId: 8, accountId: 5, ledgerId: 1, date: d(3), note: '手机话费充值', createdAt: ts(3,10,0), updatedAt: ts(3,10,0), isDeleted: 0 },
+    { id: 14, amount: 120.00, type: 'expense', categoryId: 5, accountId: 2, ledgerId: 1, date: d(3), note: '物业费', createdAt: ts(3,9,0), updatedAt: ts(3,9,0), isDeleted: 0 },
+
+    { id: 15, amount: 15.00, type: 'expense', categoryId: 2, accountId: 1, ledgerId: 1, date: d(4), note: '共享单车月卡', createdAt: ts(4,8,0), updatedAt: ts(4,8,0), isDeleted: 0 },
+    { id: 16, amount: 45.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(4), note: '聚餐AA', createdAt: ts(4,19,0), updatedAt: ts(4,19,0), isDeleted: 0 },
+    { id: 17, amount: 88.00, type: 'expense', categoryId: 18, accountId: 1, ledgerId: 1, date: d(4), note: '啤酒+零食', createdAt: ts(4,21,0), updatedAt: ts(4,21,0), isDeleted: 0 },
+
+    { id: 18, amount: 56.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(5), note: '晚餐-火锅', createdAt: ts(5,19,0), updatedAt: ts(5,19,0), isDeleted: 0 },
+    { id: 19, amount: 32.00, type: 'expense', categoryId: 3, accountId: 5, ledgerId: 1, date: d(5), note: '网购数据线', createdAt: ts(5,14,0), updatedAt: ts(5,14,0), isDeleted: 0 },
+    { id: 20, amount: 129.00, type: 'expense', categoryId: 6, accountId: 2, ledgerId: 1, date: d(5), note: '感冒药+体温计', createdAt: ts(5,11,0), updatedAt: ts(5,11,0), isDeleted: 0 },
+
+    { id: 21, amount: 12000.00, type: 'income', categoryId: 21, accountId: 2, ledgerId: 1, date: d(3), note: '5月份工资', createdAt: ts(3,9,0), updatedAt: ts(3,9,0), isDeleted: 0 },
+    { id: 22, amount: 2000.00, type: 'income', categoryId: 22, accountId: 2, ledgerId: 1, date: d(3), note: '季度绩效奖金', createdAt: ts(3,9,0), updatedAt: ts(3,9,0), isDeleted: 0 },
+
+    // --- 4月 ---
+    { id: 23, amount: 25.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(14), note: '早餐+午餐', createdAt: ts(14,12,0), updatedAt: ts(14,12,0), isDeleted: 0 },
+    { id: 24, amount: 68.00, type: 'expense', categoryId: 4, accountId: 4, ledgerId: 1, date: d(12), note: '电影院-IMAX', createdAt: ts(12,20,0), updatedAt: ts(12,20,0), isDeleted: 0 },
+    { id: 25, amount: 258.00, type: 'expense', categoryId: 13, accountId: 2, ledgerId: 1, date: d(10), note: '机械键盘', createdAt: ts(10,16,0), updatedAt: ts(10,16,0), isDeleted: 0 },
+    { id: 26, amount: 35.00, type: 'expense', categoryId: 3, accountId: 5, ledgerId: 1, date: d(9), note: '手机壳+贴膜', createdAt: ts(9,15,0), updatedAt: ts(9,15,0), isDeleted: 0 },
+    { id: 27, amount: 200.00, type: 'expense', categoryId: 12, accountId: 2, ledgerId: 1, date: d(8), note: '4月水电费', createdAt: ts(8,10,0), updatedAt: ts(8,10,0), isDeleted: 0 },
+    { id: 28, amount: 300.00, type: 'expense', categoryId: 11, accountId: 4, ledgerId: 1, date: d(8), note: '朋友结婚红包', createdAt: ts(8,11,0), updatedAt: ts(8,11,0), isDeleted: 0 },
+    { id: 29, amount: 1200.00, type: 'expense', categoryId: 5, accountId: 2, ledgerId: 1, date: d(5), note: '4月房租', createdAt: ts(5,9,0), updatedAt: ts(5,9,0), isDeleted: 0 },
+    { id: 30, amount: 299.00, type: 'expense', categoryId: 14, accountId: 4, ledgerId: 1, date: d(3), note: '健身房月卡', createdAt: ts(3,17,0), updatedAt: ts(3,17,0), isDeleted: 0 },
+    { id: 31, amount: 58.00, type: 'expense', categoryId: 15, accountId: 5, ledgerId: 1, date: d(2), note: '理发', createdAt: ts(2,14,0), updatedAt: ts(2,14,0), isDeleted: 0 },
+
+    { id: 32, amount: 12000.00, type: 'income', categoryId: 21, accountId: 2, ledgerId: 1, date: d(12), note: '4月份工资', createdAt: ts(12,9,0), updatedAt: ts(12,9,0), isDeleted: 0 },
+    { id: 33, amount: 500.00, type: 'income', categoryId: 28, accountId: 5, ledgerId: 1, date: d(7), note: '老同事还钱', createdAt: ts(7,20,0), updatedAt: ts(7,20,0), isDeleted: 0 },
+
+    // --- 3月 ---
+    { id: 34, amount: 32.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(30), note: '午餐-麻辣烫', createdAt: ts(30,12,0), updatedAt: ts(30,12,0), isDeleted: 0 },
+    { id: 35, amount: 429.00, type: 'expense', categoryId: 9, accountId: 3, ledgerId: 1, date: d(28), note: '春装连衣裙', createdAt: ts(28,15,0), updatedAt: ts(28,15,0), isDeleted: 0, refundStatus: 'partial', refundAmount: 200.00, shippingFee: 10.00, refundNote: '质量有问题部分退款', refundDate: d(22) },
+    { id: 36, amount: 189.00, type: 'expense', categoryId: 12, accountId: 2, ledgerId: 1, date: d(25), note: '3月燃气费', createdAt: ts(25,10,0), updatedAt: ts(25,10,0), isDeleted: 0 },
+    { id: 37, amount: 88.00, type: 'expense', categoryId: 4, accountId: 5, ledgerId: 1, date: d(23), note: '游戏充值', createdAt: ts(23,21,0), updatedAt: ts(23,21,0), isDeleted: 0 },
+    { id: 38, amount: 126.00, type: 'expense', categoryId: 6, accountId: 5, ledgerId: 1, date: d(20), note: '牙科挂号+检查', createdAt: ts(20,14,0), updatedAt: ts(20,14,0), isDeleted: 0 },
+    { id: 39, amount: 1200.00, type: 'expense', categoryId: 5, accountId: 2, ledgerId: 1, date: d(18), note: '3月房租', createdAt: ts(18,9,0), updatedAt: ts(18,9,0), isDeleted: 0 },
+    { id: 40, amount: 500.00, type: 'expense', categoryId: 7, accountId: 2, ledgerId: 1, date: d(15), note: '英语培训课程', createdAt: ts(15,19,0), updatedAt: ts(15,19,0), isDeleted: 0 },
+
+    { id: 41, amount: 12000.00, type: 'income', categoryId: 21, accountId: 2, ledgerId: 1, date: d(30), note: '3月份工资', createdAt: ts(30,9,0), updatedAt: ts(30,9,0), isDeleted: 0 },
+    { id: 42, amount: 350.00, type: 'income', categoryId: 25, accountId: 5, ledgerId: 1, date: d(22), note: '基金分红', createdAt: ts(22,10,0), updatedAt: ts(22,10,0), isDeleted: 0 },
+    { id: 43, amount: 800.00, type: 'income', categoryId: 24, accountId: 4, ledgerId: 1, date: d(12), note: '周末兼职设计', createdAt: ts(12,18,0), updatedAt: ts(12,18,0), isDeleted: 0 },
+
+    // --- 2月 ---
+    { id: 44, amount: 56.00, type: 'expense', categoryId: 1, accountId: 4, ledgerId: 1, date: d(60), note: '年夜饭聚餐', createdAt: ts(60,19,0), updatedAt: ts(60,19,0), isDeleted: 0 },
+    { id: 45, amount: 1200.00, type: 'expense', categoryId: 5, accountId: 2, ledgerId: 1, date: d(58), note: '2月房租', createdAt: ts(58,9,0), updatedAt: ts(58,9,0), isDeleted: 0 },
+    { id: 46, amount: 888.00, type: 'expense', categoryId: 11, accountId: 1, ledgerId: 1, date: d(55), note: '过年红包 x3', createdAt: ts(55,10,0), updatedAt: ts(55,10,0), isDeleted: 0 },
+    { id: 47, amount: 320.00, type: 'expense', categoryId: 9, accountId: 2, ledgerId: 1, date: d(52), note: '新年衣服', createdAt: ts(52,14,0), updatedAt: ts(52,14,0), isDeleted: 0 },
+    { id: 48, amount: 260.00, type: 'expense', categoryId: 12, accountId: 2, ledgerId: 1, date: d(50), note: '2月电费', createdAt: ts(50,10,0), updatedAt: ts(50,10,0), isDeleted: 0 },
+    { id: 49, amount: 680.00, type: 'expense', categoryId: 17, accountId: 2, ledgerId: 1, date: d(48), note: '春节短途旅行', createdAt: ts(48,8,0), updatedAt: ts(48,8,0), isDeleted: 0 },
+    { id: 50, amount: 45.00, type: 'expense', categoryId: 2, accountId: 4, ledgerId: 1, date: d(47), note: '网约车', createdAt: ts(47,20,0), updatedAt: ts(47,20,0), isDeleted: 0 },
+
+    { id: 51, amount: 12000.00, type: 'income', categoryId: 21, accountId: 2, ledgerId: 1, date: d(60), note: '2月份工资+年终', createdAt: ts(60,9,0), updatedAt: ts(60,9,0), isDeleted: 0 },
+    { id: 52, amount: 15000.00, type: 'income', categoryId: 22, accountId: 2, ledgerId: 1, date: d(60), note: '年终奖', createdAt: ts(60,9,0), updatedAt: ts(60,9,0), isDeleted: 0 },
+    { id: 53, amount: 666.00, type: 'income', categoryId: 26, accountId: 4, ledgerId: 1, date: d(55), note: '过年微信红包', createdAt: ts(55,8,0), updatedAt: ts(55,8,0), isDeleted: 0 },
+
+    // --- 账本1转账 ---
+    { id: 54, amount: 2000.00, type: 'transfer', categoryId: 0, accountId: 2, targetAccountId: 4, ledgerId: 1, date: d(3), note: '工资转到微信零花', createdAt: ts(3,14,0), updatedAt: ts(3,14,0), isDeleted: 0 },
+    { id: 55, amount: 1000.00, type: 'transfer', categoryId: 0, accountId: 2, targetAccountId: 5, ledgerId: 1, date: d(2), note: '储蓄卡转支付宝', createdAt: ts(2,10,0), updatedAt: ts(2,10,0), isDeleted: 0 },
+    { id: 56, amount: 500.00, type: 'transfer', categoryId: 0, accountId: 4, targetAccountId: 1, ledgerId: 1, date: d(1), note: '微信提现现金备用', createdAt: ts(1,16,0), updatedAt: ts(1,16,0), isDeleted: 0 },
+
+    // ======== 账本2: 旅行基金 ========
+
+    { id: 57, amount: 3000.00, type: 'income', categoryId: 51, accountId: 7, ledgerId: 2, date: d(20), note: '5月旅行基金存入', createdAt: ts(20,9,0), updatedAt: ts(20,9,0), isDeleted: 0 },
+    { id: 58, amount: 2000.00, type: 'income', categoryId: 51, accountId: 7, ledgerId: 2, date: d(50), note: '4月旅行基金存入', createdAt: ts(50,9,0), updatedAt: ts(50,9,0), isDeleted: 0 },
+    { id: 59, amount: 2000.00, type: 'income', categoryId: 51, accountId: 7, ledgerId: 2, date: d(80), note: '3月旅行基金存入', createdAt: ts(80,9,0), updatedAt: ts(80,9,0), isDeleted: 0 },
+
+    { id: 60, amount: 1280.00, type: 'expense', categoryId: 47, accountId: 7, ledgerId: 2, date: d(15), note: '三亚往返机票', createdAt: ts(15,10,0), updatedAt: ts(15,10,0), isDeleted: 0 },
+    { id: 61, amount: 650.00, type: 'expense', categoryId: 35, accountId: 7, ledgerId: 2, date: d(14), note: '海景酒店2晚', createdAt: ts(14,11,0), updatedAt: ts(14,11,0), isDeleted: 0 },
+    { id: 62, amount: 280.00, type: 'expense', categoryId: 31, accountId: 6, ledgerId: 2, date: d(12), note: '海鲜大餐', createdAt: ts(12,19,0), updatedAt: ts(12,19,0), isDeleted: 0 },
+    { id: 63, amount: 150.00, type: 'expense', categoryId: 47, accountId: 6, ledgerId: 2, date: d(12), note: '潜水体验', createdAt: ts(12,14,0), updatedAt: ts(12,14,0), isDeleted: 0 },
+    { id: 64, amount: 65.00, type: 'expense', categoryId: 32, accountId: 6, ledgerId: 2, date: d(11), note: '租电动车', createdAt: ts(11,9,0), updatedAt: ts(11,9,0), isDeleted: 0 },
+    { id: 65, amount: 180.00, type: 'expense', categoryId: 33, accountId: 6, ledgerId: 2, date: d(10), note: '特产手信', createdAt: ts(10,15,0), updatedAt: ts(10,15,0), isDeleted: 0 },
+    { id: 66, amount: 100.00, type: 'expense', categoryId: 40, accountId: 6, ledgerId: 2, date: d(10), note: '防晒霜+泳衣', createdAt: ts(10,10,0), updatedAt: ts(10,10,0), isDeleted: 0 },
+
+    { id: 67, amount: 800.00, type: 'transfer', categoryId: 0, accountId: 7, targetAccountId: 6, ledgerId: 2, date: d(13), note: '储蓄卡转微信支付', createdAt: ts(13,10,0), updatedAt: ts(13,10,0), isDeleted: 0 },
   ]
 }
 
 function initDemoBudgets(): Budget[] {
   const now = new Date()
+  const m = now.getMonth() + 1
+  const y = now.getFullYear()
   return [
-    { id: 1, categoryId: 1, ledgerId: 1, amount: 1000, period: 'monthly', year: now.getFullYear(), month: now.getMonth() + 1, createdAt: now.toISOString(), updatedAt: now.toISOString() },
-    { id: 2, categoryId: 3, ledgerId: 1, amount: 2000, period: 'quarterly', year: now.getFullYear(), quarter: Math.ceil((now.getMonth() + 1) / 3), createdAt: now.toISOString(), updatedAt: now.toISOString() },
-    { id: 3, categoryId: 2, ledgerId: 1, amount: 5000, period: 'yearly', year: now.getFullYear(), createdAt: now.toISOString(), updatedAt: now.toISOString() },
-    { id: 4, categoryId: 20, ledgerId: 2, amount: 3000, period: 'monthly', year: now.getFullYear(), month: now.getMonth() + 1, createdAt: now.toISOString(), updatedAt: now.toISOString() }
+    { id: 1, categoryId: 1, ledgerId: 1, amount: 2000, period: 'monthly', year: y, month: m, createdAt: now.toISOString(), updatedAt: now.toISOString() },
+    { id: 2, categoryId: 3, ledgerId: 1, amount: 1500, period: 'monthly', year: y, month: m, createdAt: now.toISOString(), updatedAt: now.toISOString() },
+    { id: 3, categoryId: 5, ledgerId: 1, amount: 3000, period: 'monthly', year: y, month: m, createdAt: now.toISOString(), updatedAt: now.toISOString() },
+    { id: 4, categoryId: 2, ledgerId: 1, amount: 500, period: 'monthly', year: y, month: m, createdAt: now.toISOString(), updatedAt: now.toISOString() },
+    { id: 5, categoryId: 4, ledgerId: 1, amount: 800, period: 'monthly', year: y, month: m, createdAt: now.toISOString(), updatedAt: now.toISOString() },
+    { id: 6, categoryId: 1, ledgerId: 1, amount: 24000, period: 'yearly', year: y, createdAt: now.toISOString(), updatedAt: now.toISOString() },
+    { id: 7, categoryId: 47, ledgerId: 2, amount: 5000, period: 'monthly', year: y, month: m, createdAt: now.toISOString(), updatedAt: now.toISOString() },
   ]
 }
 
@@ -192,6 +307,9 @@ function initDemoUserData(): void {
   mockRecords = initDemoRecords()
   mockBudgets = initDemoBudgets()
 
+  // Apply initial demo balances first, then records adjust them
+  applyDemoAccountBalances()
+
   mockRecords.forEach(r => { if (!r.isDeleted) applyRecordToBalance(r) })
 
   mockRecords.forEach(r => {
@@ -203,7 +321,7 @@ function initDemoUserData(): void {
     }
   })
 
-  nextIds = { record: 30, account: accResult2.nextId, category: catResult2.nextId, budget: 5, ledger: 3, log: 1 }
+  nextIds = { record: 68, account: accResult2.nextId, category: catResult2.nextId, budget: 8, ledger: 3, log: 1 }
 }
 
 let mockUsers: User[] = []
@@ -256,17 +374,23 @@ function saveMockUsers(): void {
   } catch {}
 }
 
+let saveTimer: any = null
 function saveCurrentUserData(): void {
   if (currentUserId === null) return
-  try {
-    const key = `expense_data_${currentUserId}`
-    localStorage.setItem(key, JSON.stringify({
-      version: 6,
-      ledgers: mockLedgers, records: mockRecords, accounts: mockAccounts,
-      categories: mockCategories, budgets: mockBudgets, logs: mockLogs, nextIds
-    }))
-  } catch {}
+  // Debounce rapid saves — collapse multiple writes into one
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    try {
+      const key = `expense_data_${currentUserId}`
+      localStorage.setItem(key, JSON.stringify({
+        version: 6,
+        ledgers: mockLedgers, records: mockRecords, accounts: mockAccounts,
+        categories: mockCategories, budgets: mockBudgets, logs: mockLogs, nextIds
+      }))
+    } catch {}
+  }, 50)
 }
+
 
 function loadOrInitUserData(userId: number): void {
   currentUserId = userId
@@ -741,11 +865,12 @@ const mockApi = {
     const sourceAccount = mockAccounts.find(a => a.id === sourceAccountId)
     const targetAccount = mockAccounts.find(a => a.id === targetAccountId)
     const actualFee = fee || 0
+    const ledgerId = sourceAccount?.ledgerId ?? targetAccount?.ledgerId
     const record: Record = {
       id, amount, type: 'transfer',
       categoryId: 0, accountId: sourceAccountId, targetAccountId,
       fee: actualFee,
-      ledgerId: sourceAccount?.ledgerId ?? targetAccount?.ledgerId,
+      ledgerId,
       date: new Date().toISOString().split('T')[0],
       note: note || `转账：${sourceAccount?.name || ''} → ${targetAccount?.name || ''}`,
       tags: '', attachment: '',
@@ -753,6 +878,23 @@ const mockApi = {
       syncedAt: undefined, isDeleted: 0
     }
     mockRecords.push(record)
+    // If there's a fee, create an expense record for it
+    if (actualFee > 0 && sourceAccount) {
+      const feeCategory = mockCategories.find(c => c.type === 'expense' && c.ledgerId === ledgerId && !c.isDeleted)
+      if (feeCategory) {
+        const feeId = nextIds.record++
+        mockRecords.push({
+          id: feeId, amount: actualFee, type: 'expense',
+          categoryId: feeCategory.id!, accountId: sourceAccountId,
+          ledgerId,
+          date: new Date().toISOString().split('T')[0],
+          note: `转账手续费：${note || ''}`,
+          tags: '', attachment: '',
+          createdAt: now, updatedAt: now,
+          syncedAt: undefined, isDeleted: 0
+        })
+      }
+    }
     if (sourceAccount) sourceAccount.balance -= amount + actualFee
     if (targetAccount) targetAccount.balance += amount
     saveCurrentUserData()
@@ -786,7 +928,8 @@ const mockApi = {
   addLog: (action: string, target: string, detail?: string): Promise<number> => {
     const id = nextIds.log++
     const now = new Date().toISOString()
-    const log: Log = { id, action, target, detail, createdAt: now }
+    const operator = currentUserId ? (mockUsers.find(u => u.id === currentUserId)?.username || String(currentUserId)) : 'system'
+    const log: Log = { id, action, target, detail, operator, createdAt: now }
     mockLogs.push(log)
     saveCurrentUserData()
     return Promise.resolve(id)

@@ -33,7 +33,17 @@ export default function LedgerManage() {
     const api = getApi()
     if (api.getLedgerStats) {
       const s = await api.getLedgerStats()
-      setStats(s)
+      if (s instanceof Map) {
+        setStats(s)
+      } else if (Array.isArray(s)) {
+        const map = new Map<number, { records: number; accounts: number; categories: number }>()
+        s.forEach((item: any) => {
+          if (item.id != null) {
+            map.set(item.id, { records: item.records || 0, accounts: item.accounts || 0, categories: item.categories || 0 })
+          }
+        })
+        setStats(map)
+      }
     }
   }
 
@@ -223,7 +233,7 @@ export default function LedgerManage() {
         okText="保存"
         cancelText="取消"
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={form} layout="horizontal" labelCol={{ span: 6 }} wrapperCol={{ span: 18 }} style={{ marginTop: 16 }}>
           <Form.Item name="name" label="账本名称" rules={[{ required: true, message: '请输入账本名称' }]}>
             <Input placeholder="例如：日常账本、旅行基金" />
           </Form.Item>

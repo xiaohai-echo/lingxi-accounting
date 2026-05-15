@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, List, Button, Modal, Form, Select, InputNumber, App, Popconfirm, Progress, Row, Col, Statistic } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Card, List, Button, Modal, Form, Select, InputNumber, App, Progress, Row, Col, Statistic, Dropdown, Tag } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, EllipsisOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
 import { addBudget, updateBudget, deleteBudget } from '../store/slices/budgetsSlice'
@@ -158,39 +158,49 @@ const Budgets: React.FC = () => {
             const spent = calculateSpent(budget)
             const percentage = budget.amount > 0 ? Math.min((spent / budget.amount) * 100, 100) : 0
             const isOverBudget = spent > budget.amount
+            const periodLabel = budget.period === 'monthly' ? `${budget.year}年${budget.month}月` : 
+             budget.period === 'quarterly' ? `${budget.year}年Q${budget.quarter}` : 
+             `${budget.year}年`
+            const actionItems = [
+              {
+                key: 'edit',
+                label: <span onClick={() => handleEdit(budget)}><EditOutlined style={{ marginRight: 8 }} />编辑</span>
+              },
+              {
+                key: 'delete',
+                danger: true,
+                label: <span onClick={() => {
+                  Modal.confirm({
+                    title: '确定要删除这个预算吗？',
+                    onOk: () => handleDelete(budget.id!),
+                    okText: '确定',
+                    cancelText: '取消'
+                  })
+                }}><DeleteOutlined style={{ marginRight: 8 }} />删除</span>
+              }
+            ]
             
             return (
               <List.Item
                 actions={[
-                  <Button 
-                    type="link" 
-                    icon={<EditOutlined />} 
-                    onClick={() => handleEdit(budget)}
-                  >
-                    编辑
-                  </Button>,
-                  <Popconfirm
-                    title="确定要删除这个预算吗？"
-                    onConfirm={() => handleDelete(budget.id!)}
-                    okText="确定"
-                    cancelText="取消"
-                  >
-                    <Button type="link" danger icon={<DeleteOutlined />}>
-                      删除
-                    </Button>
-                  </Popconfirm>
+                  <Dropdown menu={{ items: actionItems }} trigger={['click']} placement="bottomRight">
+                    <Button type="text" size="small" style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} icon={<EllipsisOutlined style={{ fontSize: 14 }} />} />
+                  </Dropdown>
                 ]}
               >
                 <List.Item.Meta
-                  avatar={<span style={{ fontSize: '32px' }}>{category?.icon || '📊'}</span>}
+                  avatar={
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <span style={{ fontSize: '24px' }}>{category?.icon || '📊'}</span>
+                      <span style={{ fontSize: 11, color: '#8c8c8c', whiteSpace: 'nowrap' }}>{category?.name || `分类#${budget.categoryId}`}</span>
+                    </div>
+                  }
                   title={
-                    <div>
-                      <span>{category?.name || `分类#${budget.categoryId}`}</span>
-                      <span style={{ marginLeft: 16, color: '#8c8c8c' }}>
-                        {budget.period === 'monthly' ? `${budget.year}年${budget.month}月` : 
-                         budget.period === 'quarterly' ? `${budget.year}年Q${budget.quarter}` : 
-                         `${budget.year}年`}
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Tag color={budget.period === 'monthly' ? 'blue' : budget.period === 'quarterly' ? 'purple' : 'orange'} style={{ fontSize: 11, margin: 0 }}>
+                        {budget.period === 'monthly' ? '月度' : budget.period === 'quarterly' ? '季度' : '年度'}
+                      </Tag>
+                      <span style={{ color: '#8c8c8c', fontSize: 13 }}>{periodLabel}</span>
                     </div>
                   }
                   description={

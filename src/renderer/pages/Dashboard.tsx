@@ -303,29 +303,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
         <Col xs={24} sm={12} md={6}>
           <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', cursor: 'pointer' }}
           onClick={() => onQuickRecord ? onQuickRecord() : onNavigate?.('2')}>
-            <div style={{ textAlign: 'center', padding: '8px 0' }}>
-              <PlusOutlined style={{ fontSize: 28, color: '#fff', marginBottom: 8 }} />
-              <div style={{ color: '#fff', fontSize: 16, fontWeight: 600 }}>快速记账</div>
-              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }}>点击直接记账</div>
+            <div style={{ textAlign: 'center', padding: '4px 0' }}>
+              <PlusOutlined style={{ fontSize: 20, color: '#fff', marginBottom: 4 }} />
+              <div style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>快速记账</div>
+              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 2 }}>点击直接记账</div>
             </div>
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
           <Card className="stat-card income" style={{ background: 'linear-gradient(135deg, rgba(82,196,26,0.12) 0%, rgba(82,196,26,0.04) 100%)', border: '1px solid rgba(82,196,26,0.15)' }}>
-            <Statistic title={<span style={{ fontSize: 13, color: SECONDARY }}>本月收入</span>} value={thisMonthIncome} precision={2} prefix={<span style={{ fontSize: 16 }}>📈</span>} valueStyle={{ color: '#52c41a', fontSize: 24, fontWeight: 700 }} />
-            <div style={{ marginTop: 8, fontSize: 12, color: TERTIARY }}>今日 +{todayIncome.toFixed(2)}</div>
+            <Statistic title={<span style={{ fontSize: 12, color: SECONDARY }}>本月收入</span>} value={thisMonthIncome} precision={2} prefix={<span style={{ fontSize: 14 }}>📈</span>} valueStyle={{ color: '#52c41a', fontSize: 18, fontWeight: 700 }} />
+            <div style={{ marginTop: 4, fontSize: 11, color: TERTIARY }}>今日 +{todayIncome.toFixed(2)}</div>
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
           <Card className="stat-card expense" style={{ background: 'linear-gradient(135deg, rgba(255,77,79,0.12) 0%, rgba(255,77,79,0.04) 100%)', border: '1px solid rgba(255,77,79,0.15)' }}>
-            <Statistic title={<span style={{ fontSize: 13, color: SECONDARY }}>本月支出</span>} value={thisMonthExpense} precision={2} prefix={<span style={{ fontSize: 16 }}>📉</span>} valueStyle={{ color: '#ff4d4f', fontSize: 24, fontWeight: 700 }} />
-            <div style={{ marginTop: 8, fontSize: 12, color: expenseTrendUp ? '#ff4d4f' : '#52c41a' }}>较上月 {expenseTrendUp ? '↑' : '↓'} {Math.abs(Number(expenseTrend))}%</div>
+            <Statistic title={<span style={{ fontSize: 12, color: SECONDARY }}>本月支出</span>} value={thisMonthExpense} precision={2} prefix={<span style={{ fontSize: 14 }}>📉</span>} valueStyle={{ color: '#ff4d4f', fontSize: 18, fontWeight: 700 }} />
+            <div style={{ marginTop: 4, fontSize: 11, color: expenseTrendUp ? '#ff4d4f' : '#52c41a' }}>较上月 {expenseTrendUp ? '↑' : '↓'} {Math.abs(Number(expenseTrend))}%</div>
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
           <Card className="stat-card balance" style={{ background: 'linear-gradient(135deg, rgba(102,126,234,0.12) 0%, rgba(102,126,234,0.04) 100%)', border: '1px solid rgba(102,126,234,0.15)' }}>
-            <Statistic title={<span style={{ fontSize: 13, color: SECONDARY }}>本月结余</span>} value={thisMonthIncome - thisMonthExpense} precision={2} prefix={<span style={{ fontSize: 16 }}>💎</span>} valueStyle={{ color: '#667eea', fontSize: 24, fontWeight: 700 }} />
-            <div style={{ marginTop: 8, fontSize: 12, color: TERTIARY }}>储蓄率 {thisMonthIncome > 0 ? ((thisMonthIncome - thisMonthExpense) / thisMonthIncome * 100).toFixed(1) : 0}%</div>
+            <Statistic title={<span style={{ fontSize: 12, color: SECONDARY }}>本月结余</span>} value={thisMonthIncome - thisMonthExpense} precision={2} prefix={<span style={{ fontSize: 14 }}>💎</span>} valueStyle={{ color: '#667eea', fontSize: 18, fontWeight: 700 }} />
+            <div style={{ marginTop: 4, fontSize: 11, color: TERTIARY }}>储蓄率 {thisMonthIncome > 0 ? ((thisMonthIncome - thisMonthExpense) / thisMonthIncome * 100).toFixed(1) : 0}%</div>
           </Card>
         </Col>
       </Row>
@@ -455,9 +455,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={12}>
           <Card title={<span style={{ fontWeight: 600 }}>💰 账户概览</span>}>
-            <div style={{ marginBottom: 16, padding: '16px', background: 'linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.08) 100%)', borderRadius: 12, textAlign: 'center' }}>
-              <div style={{ color: SECONDARY, fontSize: 13, marginBottom: 4 }}>总资产</div>
-              <div style={{ color: '#667eea', fontSize: 28, fontWeight: 700, fontFamily: 'Inter, monospace' }}>¥{totalBalance.toFixed(2)}</div>
+            <div style={{ marginBottom: 16, padding: '12px', background: 'linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.08) 100%)', borderRadius: 12, textAlign: 'center' }}>
+              <div style={{ color: SECONDARY, fontSize: 12, marginBottom: 2 }}>总资产</div>
+              <div style={{ color: '#667eea', fontSize: 22, fontWeight: 700, fontFamily: 'Inter, monospace' }}>¥{totalBalance.toFixed(2)}</div>
             </div>
             <List
               dataSource={accounts}

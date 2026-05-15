@@ -2,11 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Card, List, Button, Modal, Form, Input, Select, DatePicker, InputNumber,
-  App, Popconfirm, Tabs, Space, Row, Col, Tag, Tooltip, TimePicker
+  App, Popconfirm, Tabs, Row, Col, Tag, TimePicker, Dropdown
 } from 'antd'
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  FilterOutlined, CloseOutlined, SwapOutlined, RollbackOutlined
+  FilterOutlined, CloseOutlined, SwapOutlined, RollbackOutlined, EllipsisOutlined
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
@@ -187,7 +187,7 @@ const Records: React.FC<RecordsProps> = ({
   const handleDelete = async (id: number) => {
     try {
       await dispatch(deleteRecord(id)).unwrap()
-      message.success('记录删除成功！')
+      message.success('记录删除成功！'); dispatch(fetchAccounts() as any); dispatch(fetchRecords() as any)
     } catch (error) {
       message.error('删除失败，请重试')
     }
@@ -302,12 +302,17 @@ const Records: React.FC<RecordsProps> = ({
     if (!acc) return null
     const icon = ACCOUNT_TYPE_ICONS[acc.type] || '💰'
     const color = ACCOUNT_TYPE_COLORS[acc.type] || '#667eea'
-    const label = acc.cardNo ? `${acc.name} (尾号${acc.cardNo})` : acc.name
     return (
       <span className="payment-tag" style={{ background: color + '22', color, border: `1px solid ${color}33` }}>
-        {icon} {label}
+        {icon} {acc.name}
       </span>
     )
+  }
+
+  const getAccountCardNo = (accountId: number) => {
+    const acc = getAccountById(accountId)
+    if (!acc || !acc.cardNo) return ''
+    return `尾号${acc.cardNo}`
   }
 
   const formatTime = (record: RecordType) => {
@@ -318,26 +323,33 @@ const Records: React.FC<RecordsProps> = ({
   }
 
   const renderActions = (record: RecordType, isRefunded: boolean) => {
-    const btnStyle: React.CSSProperties = { width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
-    const placeholder = <span key="_ph" style={{ ...btnStyle, visibility: 'hidden' }} />
-
-    const refundSlot = (record.type === 'expense' && !isRefunded)
-      ? <Tooltip title="退款" key="refund">
-          <Button type="text" size="small" style={btnStyle} icon={<RollbackOutlined style={{ color: '#faad14', fontSize: 14 }} />} onClick={() => handleRefund(record)} />
-        </Tooltip>
-      : placeholder
-
-    const editSlot = record.type !== 'transfer'
-      ? <Button type="text" size="small" style={btnStyle} icon={<EditOutlined style={{ fontSize: 14 }} />} onClick={() => handleEdit(record)} key="edit" />
-      : placeholder
-
-    const deleteSlot = (
-      <Popconfirm title={record.type === 'transfer' ? "确定要删除这条转账记录吗？" : "确定要删除这条记录吗？"} onConfirm={() => handleDelete(record.id!)} okText="确定" cancelText="取消" key="delete">
-        <Button type="text" size="small" style={btnStyle} danger icon={<DeleteOutlined style={{ fontSize: 14 }} />} />
-      </Popconfirm>
+    const items: { key: string; label: React.ReactNode; danger?: boolean }[] = []
+    if (record.type === 'expense' && !isRefunded) {
+      items.push({
+        key: 'refund',
+        label: <span onClick={() => handleRefund(record)}><RollbackOutlined style={{ color: '#faad14', marginRight: 8 }} />退款</span>
+      })
+    }
+    if (record.type !== 'transfer') {
+      items.push({
+        key: 'edit',
+        label: <span onClick={() => handleEdit(record)}><EditOutlined style={{ marginRight: 8 }} />编辑</span>
+      })
+    }
+    items.push({
+      key: 'delete',
+      danger: true,
+      label: (
+        <Popconfirm title={record.type === 'transfer' ? "确定要删除这条转账记录吗？" : "确定要删除这条记录吗？"} onConfirm={() => handleDelete(record.id!)} okText="确定" cancelText="取消">
+          <span><DeleteOutlined style={{ marginRight: 8 }} />删除</span>
+        </Popconfirm>
+      )
+    })
+    return (
+      <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight">
+        <Button type="text" size="small" style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} icon={<EllipsisOutlined style={{ fontSize: 14 }} />} />
+      </Dropdown>
     )
-
-    return [refundSlot, editSlot, deleteSlot]
   }
 
   const renderRecordItem = (record: RecordType) => {
@@ -348,31 +360,33 @@ const Records: React.FC<RecordsProps> = ({
         <List.Item className="record-item-transfer">
           <List.Item.Meta
             avatar={
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: '#667eea20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
-                <SwapOutlined style={{ color: '#667eea' }} />
+              <div style={{ width: 40, height: 52, borderRadius: 10, background: '#667eea20', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                <SwapOutlined style={{ color: '#667eea', fontSize: 16 }} />
+                <span style={{ fontSize: 10, color: SECONDARY, lineHeight: 1 }}>转账</span>
               </div>
             }
             title={
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 600, fontSize: 14, minWidth: 32 }}>转账</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
                   {renderAccountTag(record.accountId)}
-                  <span style={{ color: TERTIARY }}>→</span>
+                  <span style={{ color: TERTIARY, fontSize: 12 }}>→</span>
                   {record.targetAccountId && renderAccountTag(record.targetAccountId)}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                  <span style={{ color: '#667eea', fontSize: 16, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', marginRight: 4 }}>¥{record.amount.toFixed(2)}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, marginLeft: 8 }}>
+                  <span style={{ color: '#667eea', fontSize: 13, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap' }}>¥{record.amount.toFixed(2)}</span>
                   {renderActions(record, false)}
                 </div>
               </div>
             }
             description={
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: NOTE_COLOR }}>
-                <span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: NOTE_COLOR }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                   {record.note || '账户转账'}
-                  {record.fee ? <span style={{ color: '#faad14', marginLeft: 6 }}>手续费 ¥{record.fee.toFixed(2)}</span> : ''}
+                  {record.fee ? <span style={{ color: '#faad14', marginLeft: 4 }}>手续费 ¥{record.fee.toFixed(2)}</span> : ''}
+                  {getAccountCardNo(record.accountId) ? <span style={{ marginLeft: 4 }}>· {getAccountCardNo(record.accountId)}</span> : ''}
+                  {record.targetAccountId && getAccountCardNo(record.targetAccountId) ? <span style={{ marginLeft: 4 }}>→ {getAccountCardNo(record.targetAccountId)}</span> : ''}
                 </span>
-                <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 13 }}>{timeStr}</span>
+                <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 8 }}>{timeStr}</span>
               </div>
             }
           />
@@ -388,26 +402,26 @@ const Records: React.FC<RecordsProps> = ({
       <List.Item className={isRefunded ? 'record-item-refunded' : (record.type === 'expense' ? 'record-item-expense' : 'record-item-income')}>
         <List.Item.Meta
           avatar={
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: (category?.color || '#667eea') + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
-              {category?.icon || '💸'}
+            <div style={{ width: 40, height: 52, borderRadius: 10, background: (category?.color || '#667eea') + '20', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+              <span style={{ fontSize: 18, lineHeight: 1 }}>{category?.icon || '💸'}</span>
+              <span style={{ fontSize: 10, color: SECONDARY, lineHeight: 1, maxWidth: 38, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category?.name}</span>
             </div>
           }
           title={
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 600, fontSize: 14, minWidth: 32 }}>{category?.name}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
                 {getRefundTag(record)}
                 {renderAccountTag(record.accountId)}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, marginLeft: 8 }}>
                 {isRefunded && record.refundAmount ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', whiteSpace: 'nowrap', marginRight: 4 }}>
-                    <span style={{ textDecoration: 'line-through', color: TERTIARY, fontSize: 12, fontFamily: 'Inter, monospace' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', whiteSpace: 'nowrap' }}>
+                    <span style={{ textDecoration: 'line-through', color: TERTIARY, fontSize: 11, fontFamily: 'Inter, monospace' }}>
                       -¥{record.amount.toFixed(2)}
                     </span>
                     <span style={{
                       color: record.type === 'income' ? '#52c41a' : '#ff4d4f',
-                      fontSize: 16, fontWeight: 700, fontFamily: 'Inter, monospace'
+                      fontSize: 13, fontWeight: 700, fontFamily: 'Inter, monospace'
                     }}>
                       {record.type === 'income' ? '+' : '-'}¥{effectiveAmount.toFixed(2)}
                     </span>
@@ -418,7 +432,7 @@ const Records: React.FC<RecordsProps> = ({
                 ) : (
                   <span style={{
                     color: record.type === 'income' ? '#52c41a' : '#ff4d4f',
-                    fontSize: 16, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', marginRight: 4
+                    fontSize: 13, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap'
                   }}>
                     {record.type === 'income' ? '+' : '-'}¥{record.amount.toFixed(2)}
                   </span>
@@ -428,12 +442,13 @@ const Records: React.FC<RecordsProps> = ({
             </div>
           }
           description={
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: NOTE_COLOR }}>
-              <span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: NOTE_COLOR }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                 {record.note || '无备注'}
-                {isRefunded && record.refundNote ? ` · 退款原因: ${record.refundNote}` : ''}
+                {isRefunded && record.refundNote ? ` · ${record.refundNote}` : ''}
+                {getAccountCardNo(record.accountId) ? ` · ${getAccountCardNo(record.accountId)}` : ''}
               </span>
-              <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 13, whiteSpace: 'nowrap', marginLeft: 8 }}>{timeStr}</span>
+              <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 8 }}>{timeStr}</span>
             </div>
           }
         />
@@ -445,8 +460,8 @@ const Records: React.FC<RecordsProps> = ({
     <div>
       <Card>
         <div style={{ marginBottom: 20 }}>
-          <Row gutter={16} align="middle" style={{ marginBottom: 16 }}>
-            <Col flex="auto">
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <div style={{ flex: '1 1 auto', minWidth: 0 }}>
               <Tabs activeKey={activeTab} onChange={setActiveTab} style={{ marginBottom: 0 }}
                 items={[
                   { key: 'all', label: '全部' },
@@ -455,17 +470,15 @@ const Records: React.FC<RecordsProps> = ({
                   { key: 'transfer', label: '转账' }
                 ]}
               />
-            </Col>
-            <Col>
-              <Space>
-                <Button icon={<FilterOutlined />} onClick={() => setFilterVisible(!filterVisible)} type={hasActiveFilters ? 'primary' : 'default'}>
-                  筛选{hasActiveFilters ? ` (${(filterCategory !== undefined ? 1 : 0) + (filterDateRange !== null ? 1 : 0) + (filterAccount !== undefined ? 1 : 0)})` : ''}
-                </Button>
-                <Input placeholder="搜索记录..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: 180, borderRadius: 8 }} allowClear />
-                <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="large">记一笔</Button>
-              </Space>
-            </Col>
-          </Row>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+              <Button icon={<FilterOutlined />} onClick={() => setFilterVisible(!filterVisible)} type={hasActiveFilters ? 'primary' : 'default'} size="small">
+                筛选{hasActiveFilters ? ` (${(filterCategory !== undefined ? 1 : 0) + (filterDateRange !== null ? 1 : 0) + (filterAccount !== undefined ? 1 : 0)})` : ''}
+              </Button>
+              <Input placeholder="搜索记录..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: 140, borderRadius: 8 }} allowClear size="small" />
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="small">记一笔</Button>
+            </div>
+          </div>
 
           {filterVisible && (
             <div style={{ padding: 16, marginBottom: 16, borderRadius: 10, background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}` }}>

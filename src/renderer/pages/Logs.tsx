@@ -53,13 +53,13 @@ const Logs: React.FC<LogsProps> = ({ isDark = true }) => {
     <div>
       <Card
         title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <span style={{ fontWeight: 600, fontSize: 16 }}><FileTextOutlined style={{ marginRight: 8 }} />操作日志</span>
-            <Space>
+            <Space size={8} wrap>
               <Select
                 allowClear
                 placeholder="筛选操作类型"
-                style={{ width: 150 }}
+                style={{ width: 130 }}
                 size="small"
                 value={filterAction}
                 onChange={setFilterAction}
@@ -69,7 +69,7 @@ const Logs: React.FC<LogsProps> = ({ isDark = true }) => {
                 ))}
               </Select>
               <Popconfirm title="确定要清空所有日志吗？" onConfirm={() => dispatch(clearLogs() as any)} okText="确定" cancelText="取消">
-                <Button size="small" danger icon={<ClearOutlined />}>清空日志</Button>
+                <Button size="small" danger icon={<ClearOutlined />}>清空</Button>
               </Popconfirm>
             </Space>
           </div>
@@ -85,16 +85,16 @@ const Logs: React.FC<LogsProps> = ({ isDark = true }) => {
             renderItem={(log) => {
               const cfg = actionConfig[log.action] || { color: '#999', label: log.action }
               return (
-                <List.Item style={{ padding: '10px 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 12 }}>
-                    <Tag color={cfg.color} style={{ minWidth: 80, textAlign: 'center', fontWeight: 500, margin: 0 }}>
+                <List.Item style={{ padding: '8px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 8, flexWrap: 'wrap' }}>
+                    <Tag color={cfg.color} style={{ minWidth: 70, textAlign: 'center', fontWeight: 500, margin: 0, fontSize: 11 }}>
                       {cfg.label}
                     </Tag>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 2 }}>{log.target}</div>
-                      {log.detail && <div style={{ fontSize: 12, color: SECONDARY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.detail}</div>}
+                    <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.target}</div>
+                      {log.detail && <div style={{ fontSize: 11, color: SECONDARY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.detail}</div>}
                     </div>
-                    <div style={{ fontSize: 13, color: SECONDARY, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <div style={{ fontSize: 11, color: SECONDARY, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', flexShrink: 0 }}>
                       {formatTime(log)}
                     </div>
                   </div>

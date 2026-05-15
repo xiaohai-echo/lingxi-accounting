@@ -16,6 +16,7 @@ win:
       arch:
         - x64
   icon: build/icon.ico
+  signAndEditExecutable: false
   artifactName: ${productName}-${version}-win-${arch}.${ext}
 
 nsis:

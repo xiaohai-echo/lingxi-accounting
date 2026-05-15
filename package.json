@@ -11,6 +11,8 @@
     "build:vite": "vite build",
     "build:electron": "tsc -p tsconfig.main.json",
     "build:android": "npm run build:vite && npx cap sync android",
+    "pack:exe": "npm run build && node scripts/pack-exe.js",
+    "pack:apk": "npm run build:vite && npx cap sync android && node scripts/pack-apk.js",
     "open:android": "npx cap open android",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

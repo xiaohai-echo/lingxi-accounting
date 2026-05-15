@@ -67,10 +67,16 @@ export function registerIpcHandlers() {
 
   // Sync
   ipcMain.handle('sync-data', () => {
-    const now = new Date().toISOString()
-    const records = getRecords()
-    records.forEach(r => { if (r.id) updateRecord(r.id, { syncedAt: now } as any) })
-    return { success: true, message: '数据同步成功', lastSyncAt: now }
+    try {
+      const now = new Date().toISOString()
+      const records = getRecords()
+      records.forEach(r => {
+        if (r.id) updateRecord(r.id, { syncedAt: now } as any)
+      })
+      return { success: true, message: '数据同步成功', lastSyncAt: now }
+    } catch (e: any) {
+      return { success: false, message: '同步失败: ' + e.message }
+    }
   })
   ipcMain.handle('get-sync-status', () => {
     const data = JSON.stringify({ ledgers: getLedgers(), records: getRecords(), accounts: getAccounts(), categories: getCategories(), budgets: getBudgets() })

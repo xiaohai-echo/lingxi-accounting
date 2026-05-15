@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Button, Modal, Form, Input, InputNumber, Select, App, Popconfirm, Tabs, Row, Col, List, Empty } from 'antd'
+import { Card, Button, Modal, Form, Input, InputNumber, Select, App, Popconfirm, Tabs, Row, Col, List, Empty, Tooltip } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
@@ -30,6 +30,10 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
   const CARD_BG = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
   const CARD_BORDER = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
   const NOTE_COLOR = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
+
+  const PRESET_ICONS = ['🍜','🚗','🛒','🎮','🏠','🏥','📚','📱','👗','🧴','🎁','⚡','💻','🏃','💇','🐱','✈️','🍺','📎','📦','💰','🎉','📈','💼','🏦','🧧','📋','🔑','↩️','📥','☕','🍕','💊','🎬','🎵','🌸','📖','🎓','🎂','🔥']
+  const [selectedIcon, setSelectedIcon] = useState('')
+  const [customIcon, setCustomIcon] = useState('')
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
@@ -78,21 +82,27 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
 
   const handleAdd = (type: 'income' | 'expense') => {
     setEditingCategory(null)
+    setSelectedIcon('')
+    setCustomIcon('')
     form.resetFields()
     form.setFieldsValue({
       type,
       color: type === 'expense' ? '#ff4d4f' : '#52c41a',
-      sortOrder: categories.length
+      sortOrder: categories.length,
+      icon: ''
     })
     setIsModalOpen(true)
   }
 
   const handleEdit = (category: Category) => {
     setEditingCategory(category)
+    const icon = category.icon || ''
+    setSelectedIcon(PRESET_ICONS.includes(icon) ? icon : '')
+    setCustomIcon(PRESET_ICONS.includes(icon) ? '' : icon)
     form.setFieldsValue({
       name: category.name,
       type: category.type,
-      icon: category.icon,
+      icon,
       color: category.color,
       sortOrder: category.sortOrder
     })
@@ -334,7 +344,40 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
             </Select>
           </Form.Item>
           <Form.Item name="icon" label="图标">
-            <Input placeholder="请输入emoji图标，如：🍜" size="large" />
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {PRESET_ICONS.map(icon => (
+                  <Tooltip key={icon} title={icon}>
+                    <div
+                      onClick={() => {
+                        setSelectedIcon(icon)
+                        setCustomIcon('')
+                        form.setFieldsValue({ icon })
+                      }}
+                      style={{
+                        width: 36, height: 36, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: 20, cursor: 'pointer',
+                        borderRadius: 8, border: selectedIcon === icon ? '2px solid #667eea' : '2px solid transparent',
+                        background: selectedIcon === icon ? 'rgba(102,126,234,0.1)' : 'transparent',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {icon}
+                    </div>
+                  </Tooltip>
+                ))}
+              </div>
+              <Input
+                placeholder="或输入自定义图标（emoji/文字）"
+                size="large"
+                value={customIcon}
+                onChange={e => {
+                  setCustomIcon(e.target.value)
+                  setSelectedIcon('')
+                  form.setFieldsValue({ icon: e.target.value })
+                }}
+              />
+            </div>
           </Form.Item>
           <Form.Item name="color" label="颜色">
             <Input type="color" placeholder="选择颜色" />

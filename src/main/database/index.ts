@@ -14,20 +14,18 @@ export async function initDatabase() {
 
     const userDataPath = app.getPath('userData')
     const dbPath = path.join(userDataPath, 'expense-tracker.db')
-    const wasmPath = path.join(__dirname, '../../node_modules/sql.js/dist/sql-wasm.wasm')
+    // Resolve WASM path relative to app root (works in both dev and packaged)
+    const appPath = app.getAppPath()
+    const wasmPath = path.join(appPath, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
 
     console.log('[Database] User data path:', userDataPath)
     console.log('[Database] Database path:', dbPath)
+    console.log('[Database] App path:', appPath)
     console.log('[Database] WASM path:', wasmPath)
 
-    SQL = await initSqlJs({
-      locateFile: (file: string) => {
-        if (file.endsWith('.wasm')) {
-          return wasmPath
-        }
-        return path.join(__dirname, `../../node_modules/sql.js/dist/${file}`)
-      }
-    })
+    // Load SQL.js with WASM binary — avoids path resolution issues in asar
+    const wasmBinary = fs.readFileSync(wasmPath)
+    SQL = await initSqlJs({ wasmBinary })
 
     console.log('[Database] sql.js initialized successfully')
 
@@ -151,7 +149,9 @@ function createTables() {
       ledger_id INTEGER,
       is_default INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
-      is_deleted INTEGER NOT NULL DEFAULT 0
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT,
+      updated_at TEXT
     )
   `)
 
@@ -199,6 +199,8 @@ function createTables() {
 
 function runMigrations() {
   const migrations: string[] = [
+    "ALTER TABLE categories ADD COLUMN created_at TEXT",
+    "ALTER TABLE categories ADD COLUMN updated_at TEXT",
     "CREATE TABLE IF NOT EXISTS ledgers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, icon TEXT, color TEXT, is_default INTEGER NOT NULL DEFAULT 0, is_deleted INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password TEXT NOT NULL, avatar TEXT, nickname TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, target TEXT NOT NULL, detail TEXT, operator TEXT, created_at TEXT NOT NULL)",
@@ -247,11 +249,32 @@ function seedInitialData() {
       { name: '交通', type: 'expense', icon: '🚗', color: '#4ECDC4' },
       { name: '购物', type: 'expense', icon: '🛒', color: '#45B7D1' },
       { name: '娱乐', type: 'expense', icon: '🎮', color: '#96CEB4' },
-      { name: '医疗', type: 'expense', icon: '🏥', color: '#FFEAA7' },
+      { name: '居住', type: 'expense', icon: '🏠', color: '#F39C12' },
+      { name: '医疗', type: 'expense', icon: '🏥', color: '#E74C3C' },
       { name: '教育', type: 'expense', icon: '📚', color: '#DDA0DD' },
+      { name: '通讯', type: 'expense', icon: '📱', color: '#1ABC9C' },
+      { name: '服饰', type: 'expense', icon: '👗', color: '#E91E63' },
+      { name: '日用', type: 'expense', icon: '🧴', color: '#795548' },
+      { name: '人情', type: 'expense', icon: '🎁', color: '#FF9800' },
+      { name: '水电燃气', type: 'expense', icon: '⚡', color: '#FFD700' },
+      { name: '数码电子', type: 'expense', icon: '💻', color: '#3498DB' },
+      { name: '运动健身', type: 'expense', icon: '🏃', color: '#2ECC71' },
+      { name: '美容美发', type: 'expense', icon: '💇', color: '#FF69B4' },
+      { name: '宠物', type: 'expense', icon: '🐱', color: '#FFA07A' },
+      { name: '旅行', type: 'expense', icon: '✈️', color: '#00BCD4' },
+      { name: '烟酒', type: 'expense', icon: '🍺', color: '#A0522D' },
+      { name: '办公', type: 'expense', icon: '📎', color: '#607D8B' },
+      { name: '其他支出', type: 'expense', icon: '📦', color: '#9E9E9E' },
       { name: '工资', type: 'income', icon: '💰', color: '#2ECC71' },
       { name: '奖金', type: 'income', icon: '🎉', color: '#F39C12' },
-      { name: '投资', type: 'income', icon: '📈', color: '#3498DB' }
+      { name: '投资', type: 'income', icon: '📈', color: '#3498DB' },
+      { name: '兼职', type: 'income', icon: '💼', color: '#9B59B6' },
+      { name: '理财', type: 'income', icon: '🏦', color: '#1ABC9C' },
+      { name: '红包', type: 'income', icon: '🧧', color: '#FF4500' },
+      { name: '报销', type: 'income', icon: '📋', color: '#8BC34A' },
+      { name: '租金', type: 'income', icon: '🔑', color: '#FF9800' },
+      { name: '退款', type: 'income', icon: '↩️', color: '#00BCD4' },
+      { name: '其他收入', type: 'income', icon: '📥', color: '#7F8C8D' }
     ]
 
     const insertStmt = db.prepare(
@@ -417,6 +440,7 @@ export function updateRecord(id: number, record: Partial<Omit<Record, 'id' | 'cr
   if (record.shippingFee !== undefined) { setClauses.push('shipping_fee = ?'); values.push(record.shippingFee) }
   if (record.refundNote !== undefined) { setClauses.push('refund_note = ?'); values.push(record.refundNote) }
   if (record.refundDate !== undefined) { setClauses.push('refund_date = ?'); values.push(record.refundDate) }
+  if ((record as any).syncedAt !== undefined) { setClauses.push('synced_at = ?'); values.push((record as any).syncedAt) }
 
   values.push(id)
   const stmt = db.prepare(`UPDATE records SET ${setClauses.join(', ')} WHERE id = ?`)
@@ -449,13 +473,28 @@ export function transferBetweenAccounts(
   sourceAccountId: number, targetAccountId: number, amount: number,
   note?: string, fee?: number, ledgerId?: number
 ): number {
-  return addRecord({
+  const actualFee = fee || 0
+  const transferId = addRecord({
     amount, type: 'transfer', categoryId: 0,
     accountId: sourceAccountId, targetAccountId,
-    fee: fee || 0, ledgerId,
+    fee: actualFee, ledgerId,
     date: new Date().toISOString().split('T')[0],
     note: note || ''
   })
+  if (actualFee > 0) {
+    const cats = getCategories(ledgerId)
+    const feeCat = cats.find(c => c.type === 'expense')
+    if (feeCat) {
+      addRecord({
+        amount: actualFee, type: 'expense',
+        categoryId: feeCat.id!, accountId: sourceAccountId,
+        ledgerId,
+        date: new Date().toISOString().split('T')[0],
+        note: `转账手续费：${note || ''}`
+      })
+    }
+  }
+  return transferId
 }
 
 export function refundRecord(originalRecordId: number, refundAmount: number, shippingFee: number, note?: string): void {

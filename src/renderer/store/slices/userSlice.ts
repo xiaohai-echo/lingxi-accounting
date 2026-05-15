@@ -29,6 +29,8 @@ export const loginUser = createAsyncThunk<User, { username: string; password: st
   async ({ username, password }, { rejectWithValue }) => {
     const api = getApi()
     const user = await api.login(username, password)
+    if (user) getApi().addLog('auth', '登录', username)
+    else getApi().addLog('auth', '登录失败', username)
     if (!user) return rejectWithValue('用户名或密码错误') as any
     return user
   }
@@ -40,6 +42,7 @@ export const registerUser = createAsyncThunk<User, { username: string; password:
     const api = getApi()
     try {
       const user = await api.register(username, password, nickname)
+      getApi().addLog('auth', '注册', username)
       return user
     } catch (e: any) {
       return rejectWithValue(e.message || '注册失败') as any
@@ -50,6 +53,7 @@ export const registerUser = createAsyncThunk<User, { username: string; password:
 export const logoutUser = createAsyncThunk(
   'user/logout',
   async () => {
+    getApi().addLog('auth', '登出', '')
     localStorage.removeItem('userId')
   }
 )

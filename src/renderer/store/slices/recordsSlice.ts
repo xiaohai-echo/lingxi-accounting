@@ -25,9 +25,16 @@ export const fetchRecords = createAsyncThunk(
 export const addRecord = createAsyncThunk(
   'records/addRecord',
   async (record: Omit<Record, 'id' | 'createdAt' | 'updatedAt'> & { createdAt?: string }) => {
-    const id = await getApi().addRecord(record)
+    const api = getApi()
+    const id = await api.addRecord(record)
     const typeLabel = record.type === 'income' ? '收入' : record.type === 'expense' ? '支出' : '转账'
-    getApi().addLog('add_record', `${typeLabel}记录 ¥${record.amount.toFixed(2)}`, record.note || undefined)
+    // Resolve names from IDs for detailed logging
+    const cats = await api.getCategories()
+    const accts = await api.getAccounts()
+    const catName = cats.find((c: any) => c.id === record.categoryId)?.name
+    const accName = accts.find((a: any) => a.id === record.accountId)?.name
+    const detail = [catName, accName, record.note].filter(Boolean).join(' | ')
+    api.addLog('add_record', `${typeLabel} ¥${record.amount.toFixed(2)}`, detail || undefined)
     return { ...record, id, createdAt: record.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
   }
 )
@@ -52,10 +59,17 @@ export const deleteRecord = createAsyncThunk(
 
 export const transferRecord = createAsyncThunk(
   'records/transferRecord',
-  async ({ sourceAccountId, targetAccountId, amount, note, fee }: { sourceAccountId: number; targetAccountId: number; amount: number; note?: string; fee?: number }) => {
-    const id = await getApi().transferBetweenAccounts(sourceAccountId, targetAccountId, amount, note, fee)
-    const detail = fee ? `金额 ¥${amount.toFixed(2)} 手续费 ¥${fee.toFixed(2)}` : `金额 ¥${amount.toFixed(2)}`
-    getApi().addLog('transfer', `账户转账 ¥${amount.toFixed(2)}`, detail)
+  async ({ sourceAccountId, targetAccountId, amount, note, fee, transferType }: { sourceAccountId: number; targetAccountId: number; amount: number; note?: string; fee?: number; transferType?: string }) => {
+    const api = getApi()
+    const id = await api.transferBetweenAccounts(sourceAccountId, targetAccountId, amount, note, fee)
+    const typeLabel = transferType === 'withdraw' ? '提现' : transferType === 'recharge' ? '充值' : '转账'
+    const accts = await api.getAccounts()
+    const srcAcc = accts.find((a: any) => a.id === sourceAccountId)
+    const tgtAcc = accts.find((a: any) => a.id === targetAccountId)
+    const srcName = (srcAcc?.name || '') + (srcAcc?.cardNo ? `尾号${srcAcc.cardNo}` : '')
+    const tgtName = (tgtAcc?.name || '') + (tgtAcc?.cardNo ? `尾号${tgtAcc.cardNo}` : '')
+    const detail = [srcName, tgtName ? '→' : '', tgtName, note, fee ? `手续费¥${fee.toFixed(2)}` : ''].filter(Boolean).join(' ')
+    api.addLog('transfer', `账户${typeLabel} ¥${amount.toFixed(2)}`, detail || undefined)
     return { id, amount, type: 'transfer' as const, accountId: sourceAccountId, targetAccountId, fee, note, date: new Date().toISOString().split('T')[0], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
   }
 )
@@ -64,8 +78,13 @@ export const refundRecordThunk = createAsyncThunk(
   'records/refundRecord',
   async ({ originalRecordId, refundAmount, shippingFee, note }: { originalRecordId: number; refundAmount: number; shippingFee: number; note?: string }) => {
     const result = await getApi().refundRecord(originalRecordId, refundAmount, shippingFee, note)
+    const api2 = getApi()
+    const recs2 = await api2.getRecords()
+    const orig = recs2.find((r: any) => r.id === originalRecordId)
+    const origNote = orig?.note || ''
     const detail = shippingFee ? `退款 ¥${refundAmount.toFixed(2)} 运费 ¥${shippingFee.toFixed(2)}` : `退款 ¥${refundAmount.toFixed(2)}`
-    getApi().addLog('refund_record', `退款记录 #${originalRecordId}`, detail)
+    const summary = origNote ? `${detail} | ${origNote}` : detail
+    api2.addLog('refund_record', `退款记录 #${originalRecordId} ¥${refundAmount.toFixed(2)}`, summary)
     return result
   }
 )

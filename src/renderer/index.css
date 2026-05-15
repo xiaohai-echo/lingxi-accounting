@@ -68,7 +68,7 @@ body {
 .ant-list-item {
   transition: background 0.2s ease !important;
   border-radius: 8px !important;
-  padding: 12px 16px !important;
+  padding: 8px 12px !important;
 }
 
 .ant-input,
@@ -203,12 +203,13 @@ body {
 .payment-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 11px;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
   font-weight: 500;
-  line-height: 1.6;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .ant-layout-sider-trigger {

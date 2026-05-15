@@ -4,7 +4,7 @@ import { UserOutlined, LockOutlined, SmileOutlined } from '@ant-design/icons'
 import { useDispatch, useSelector } from 'react-redux'
 import { loginUser, registerUser, clearError } from '../store/slices/userSlice'
 import type { AppDispatch, RootState } from '../store'
-import logoImg from '../assets/logo.jpg'
+import logoImg from '../assets/logo.png'
 
 const HIGHLIGHTS = [
   { icon: '💰', title: '多账户管理', desc: '现金/银行卡/微信/支付宝统一管理' },

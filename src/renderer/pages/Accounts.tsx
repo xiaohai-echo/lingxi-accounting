@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Button, Modal, Form, Input, InputNumber, Select, App, Popconfirm, Row, Col, Space, List, Empty, AutoComplete } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, SwapOutlined, ArrowRightOutlined, DollarOutlined, WalletOutlined } from '@ant-design/icons'
+import { Card, Button, Modal, Form, Input, InputNumber, Select, App, Popconfirm, Row, Col, Space, List, Empty, AutoComplete, Dropdown } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, SwapOutlined, ArrowRightOutlined, DollarOutlined, WalletOutlined, EllipsisOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
-import { addAccount, updateAccount, deleteAccount } from '../store/slices/accountsSlice'
-import { transferRecord, deleteRecord } from '../store/slices/recordsSlice'
+import { addAccount, updateAccount, deleteAccount, fetchAccounts } from '../store/slices/accountsSlice'
+import { transferRecord, deleteRecord, fetchRecords } from '../store/slices/recordsSlice'
 import type { Account, Record as RecordType } from '../../main/database/schema'
 import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_LABELS } from '../utils/constants'
 
@@ -63,7 +63,6 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
   const [form] = Form.useForm()
   const [accountType, setAccountType] = useState<string>('cash')
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0)
 
   const getCategoryById = (id: number) => categories.find(c => c.id === id)
   const getAccountById = (id: number) => accounts.find(a => a.id === id)
@@ -188,10 +187,13 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
         targetAccountId: values.targetAccountId,
         amount: values.amount,
         note: values.note,
-        fee
+        fee,
+        transferType: 'transfer'
       })).unwrap()
       message.success('转账成功！')
       setTransferVisible(false)
+      dispatch(fetchAccounts() as any)
+      dispatch(fetchRecords() as any)
       if (detailAccount) {
         const updated = accounts.find(a => a.id === detailAccount.id)
         if (updated) setDetailAccount({ ...updated })
@@ -215,10 +217,13 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
         targetAccountId: values.targetAccountId,
         amount: values.amount,
         note: values.note || '提现',
-        fee
+        fee,
+        transferType: 'withdraw'
       })).unwrap()
       message.success('提现成功！')
       setWithdrawVisible(false)
+      dispatch(fetchAccounts() as any)
+      dispatch(fetchRecords() as any)
       if (detailAccount) {
         const updated = accounts.find(a => a.id === detailAccount.id)
         if (updated) setDetailAccount({ ...updated })
@@ -242,10 +247,13 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
         targetAccountId: values.targetAccountId,
         amount: values.amount,
         note: values.note || '充值',
-        fee
+        fee,
+        transferType: 'recharge'
       })).unwrap()
       message.success('充值成功！')
       setRechargeVisible(false)
+      dispatch(fetchAccounts() as any)
+      dispatch(fetchRecords() as any)
       if (detailAccount) {
         const updated = accounts.find(a => a.id === detailAccount.id)
         if (updated) setDetailAccount({ ...updated })
@@ -451,15 +459,22 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
     }
   }
 
+  const ledgerAccounts = useMemo(() => {
+    if (currentLedgerId === null) return accounts
+    return accounts.filter(a => a.ledgerId === currentLedgerId || a.ledgerId === undefined)
+  }, [accounts, currentLedgerId])
+
   const accountsByType = useMemo(() => {
-    const groups: Record<string, typeof accounts> = {}
-    accounts.forEach(acc => {
+    const groups: Record<string, typeof ledgerAccounts> = {}
+    ledgerAccounts.forEach(acc => {
       const typeKey = acc.type || 'other'
       if (!groups[typeKey]) groups[typeKey] = []
       groups[typeKey].push(acc)
     })
     return groups
-  }, [accounts])
+  }, [ledgerAccounts])
+
+  const totalBalance = ledgerAccounts.reduce((sum, acc) => sum + acc.balance, 0)
 
   return (
     <div>
@@ -470,37 +485,52 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
           marginBottom: 24
         }}
       >
-        <Row align="middle" justify="space-between">
+        <Row align="middle" justify="space-between" wrap>
           <Col>
-            <div style={{ color: SECONDARY, fontSize: 13, marginBottom: 4 }}>总资产</div>
-            <div style={{ color: '#667eea', fontSize: 36, fontWeight: 700, fontFamily: 'Inter, monospace' }}>
+            <div style={{ color: SECONDARY, fontSize: 12, marginBottom: 2 }}>总资产</div>
+            <div style={{ color: '#667eea', fontSize: 24, fontWeight: 700, fontFamily: 'Inter, monospace' }}>
               ¥{totalBalance.toFixed(2)}
             </div>
           </Col>
           <Col>
-            <Space>
-              <Button icon={<DollarOutlined />} onClick={showWithdraw} size="large">
-                提现
-              </Button>
-              <Button icon={<WalletOutlined />} onClick={showRecharge} size="large">
-                充值
-              </Button>
-              <Button icon={<SwapOutlined />} onClick={showTransfer} size="large">
-                转账
-              </Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="large">
-                添加账户
-              </Button>
-            </Space>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+              <Button icon={<DollarOutlined />} onClick={showWithdraw} size="small">提现</Button>
+              <Button icon={<WalletOutlined />} onClick={showRecharge} size="small">充值</Button>
+              <Button icon={<SwapOutlined />} onClick={showTransfer} size="small">转账</Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="small">添加账户</Button>
+            </div>
           </Col>
         </Row>
       </Card>
 
       <Row gutter={[16, 16]}>
-        {accounts.map((account) => {
+        {ledgerAccounts.map((account) => {
           const gradients = accountGradients[account.type] || accountGradients.other
           const icon = ACCOUNT_TYPE_ICONS[account.type] || '💰'
           const currentBalance = account.balance
+          const actionColor = 'rgba(255,255,255,0.85)'
+          const actionItems = [
+            {
+              key: 'transfer',
+              label: <span onClick={() => { setDetailAccount(account); showTransfer() }}><SwapOutlined style={{ marginRight: 8 }} />转账</span>
+            },
+            {
+              key: 'edit',
+              label: <span onClick={() => handleEdit(account)}><EditOutlined style={{ marginRight: 8 }} />编辑</span>
+            },
+            {
+              key: 'delete',
+              danger: true,
+              label: <span onClick={() => {
+                Modal.confirm({
+                  title: '确定要删除这个账户吗？',
+                  onOk: () => handleDelete(account.id!),
+                  okText: '确定',
+                  cancelText: '取消'
+                })
+              }}><DeleteOutlined style={{ marginRight: 8 }} />删除</span>
+            }
+          ]
           return (
             <Col xs={24} sm={12} md={8} key={account.id}>
               <Card
@@ -509,51 +539,36 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
                   background: `linear-gradient(135deg, ${gradients[0]} 0%, ${gradients[1]} 100%)`,
                   border: 'none',
                   borderRadius: 16,
-                  minHeight: 180,
+                  minHeight: 120,
                   cursor: 'pointer'
                 }}
                 onClick={() => showDetail(account)}
-                actions={[
-                  <Button
-                    type="text"
-                    icon={<SwapOutlined style={{ color: 'rgba(255,255,255,0.8)' }} />}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setDetailAccount(account)
-                      showTransfer()
-                    }}
-                  >
-                    <span style={{ color: 'rgba(255,255,255,0.8)' }}>转账</span>
-                  </Button>,
-                  <Button
-                    type="text"
-                    icon={<EditOutlined style={{ color: 'rgba(255,255,255,0.8)' }} />}
-                    onClick={(e) => { e.stopPropagation(); handleEdit(account) }}
-                  >
-                    <span style={{ color: 'rgba(255,255,255,0.8)' }}>编辑</span>
-                  </Button>,
-                  <Popconfirm
-                    title="确定要删除这个账户吗？"
-                    onConfirm={() => handleDelete(account.id!)}
-                    okText="确定"
-                    cancelText="取消"
-                  >
-                    <Button type="text" icon={<DeleteOutlined style={{ color: 'rgba(255,255,255,0.8)' }} />} onClick={(e) => e.stopPropagation()}>
-                      <span style={{ color: 'rgba(255,255,255,0.8)' }}>删除</span>
-                    </Button>
-                  </Popconfirm>
-                ]}
               >
-                <div style={{ fontSize: 36, marginBottom: 12 }}>{icon}</div>
-                <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: 500, marginBottom: 4 }}>
-                  {account.name}
-                  {account.cardNo && <span style={{ fontSize: 11, marginLeft: 6, opacity: 0.7 }}>{cardDisplay(account.cardNo)}</span>}
-                </div>
-                <div style={{ color: '#fff', fontSize: 28, fontWeight: 700, fontFamily: 'Inter, monospace' }}>
-                  ¥{currentBalance.toFixed(2)}
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 4 }}>
-                  {account.bankName ? `${account.bankName}` : '余额'}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 24 }}>{icon}</span>
+                      <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {account.name}
+                      </div>
+                    </div>
+                    <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, fontFamily: 'Inter, monospace' }}>
+                      ¥{currentBalance.toFixed(2)}
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>
+                      {account.bankName ? `${account.bankName}` : '余额'}
+                      {account.cardNo ? ` · 尾号${account.cardNo}` : ''}
+                    </div>
+                  </div>
+                  <Dropdown menu={{ items: actionItems }} trigger={['click']} placement="bottomRight">
+                    <Button
+                      type="text"
+                      size="small"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ color: actionColor, width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                      icon={<EllipsisOutlined style={{ fontSize: 14 }} />}
+                    />
+                  </Dropdown>
                 </div>
               </Card>
             </Col>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import path from 'path'
 import { initDatabase } from './database'
 import { registerIpcHandlers } from './ipc'
@@ -6,6 +6,8 @@ import { registerIpcHandlers } from './ipc'
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
+  Menu.setApplicationMenu(null)
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,

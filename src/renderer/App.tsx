@@ -14,7 +14,7 @@ import { fetchAccounts } from './store/slices/accountsSlice'
 import { fetchCategories } from './store/slices/categoriesSlice'
 import { fetchBudgets } from './store/slices/budgetsSlice'
 import Login from './pages/Login'
-import logoImg from './assets/logo.jpg'
+import logoImg from './assets/logo.png'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Records = lazy(() => import('./pages/Records'))
@@ -269,7 +269,8 @@ function AppContent() {
           <Content style={{
             padding: isMobile ? 12 : 24,
             overflow: 'auto',
-            height: `calc(100vh - 56px${isMobile ? ' - 52px' : ''})`
+            height: `calc(100vh - 56px${isMobile ? ' - 52px' : ''})`,
+            paddingBottom: isMobile ? 56 : 0
           }}>
             <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}><Spin size="large" /></div>}>
               {renderContent()}
