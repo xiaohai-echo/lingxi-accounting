@@ -64,20 +64,44 @@ AI 从输入中提取结构化数据，**不直接指定最终类别**，而是�
 
 ### 第二步：匹配类别和账户
 
-AI Service 拿到第一步的结果后，在本地执行匹配：
+#### 2a. 自定义店铺映射（优先）
 
-1. **类别识别**：
-   - 根据 `description` + `type` 在现有分类中做语义匹配
-   - 匹配策略：按关键词包含匹配（如「午餐」→「餐饮」，「公交」→「交通出行」，「工资」→「工资收入」）
-   - 预设关键词映射表 + 模糊回退（description 包含分类名即可）
-   - 匹配不到 → 使用默认分类（支出→「其他支出」，收入→「其他收入」）
+用户可在设置页维护店铺→类别的固定映射表，存储于 localStorage：
 
-2. **账户识别**：
-   - 根据 `paymentMethod` 匹配现有账户（「现金」→现金账户，「微信」→微信，「支付宝」→支付宝）
-   - 匹配不到 → 使用当前账本默认账户
-   - 收入默认记入第一个资产类账户
+```json
+// store_mappings_{userId}
+[
+  { "storeName": "星巴克", "categoryId": 5 },
+  { "storeName": "滴滴出行", "categoryId": 2 },
+  { "storeName": "美团外卖", "categoryId": 5 }
+]
+```
 
-3. **写入记录**：
+第一步提取的 `description` 中如包含映射表里的店铺名 → 直接采用对应分类，跳过 AI 匹配。
+
+#### 2b. AI 分类匹配
+
+自定义映射未命中时，调用 **GLM-4-Flash** 进行语义匹配：
+
+- 输入：第一步提取的 `{ description, type }` + 当前账本全部分类列表 `[{ name, type }]`
+- Prompt 要求模型从给定分类中选择最合适的，返回分类名
+- 模型只需要从已有选项中「选择」，不「发明」新分类
+
+```
+系统: 你是记账分类助手。根据消费描述，从给定分类列表中选择最合适的分类。
+      只返回分类名，不要解释。
+
+用户: 消费描述：「午餐 公司楼下食堂」 类型：expense
+      可选分类：[餐饮, 交通出行, 购物消费, 居家生活, 医疗健康, 教育培训, 人情往来, 其他支出]
+```
+
+#### 2c. 账户识别
+
+- 根据 `paymentMethod` 匹配现有账户（「现金」→现金账户，「微信」→微信，「支付宝」→支付宝）
+- 匹配不到 → 使用当前账本默认账户
+- 收入默认记入第一个资产类账户
+
+#### 2d. 写入记录
 
 ```typescript
 const record = {
@@ -98,15 +122,17 @@ mockApi.addRecord(record)
 ```typescript
 // 核心方法
 analyzeAccounting(input: { text?: string; imageBase64?: string }): Promise<RecordInput>
-  ├─ step1_extract(text?, imageBase64?)  → { amount, type, description, date, paymentMethod }
-  ├─ step2_matchCategory(description, type) → categoryId
-  ├─ step3_matchAccount(paymentMethod, type) → accountId
+  ├─ step1_extract(text?, imageBase64?) → { amount, type, description, date, paymentMethod }
+  ├─ step2_matchStoreMapping(description) → categoryId | null (查自定义映射)
+  ├─ step3_aiMatchCategory(description, type, categories[]) → categoryId
+  └─ step4_matchAccount(paymentMethod, type) → accountId
   └─ return { amount, type, categoryId, accountId, date, description }
 ```
 
 - API Key 从 localStorage `zhipu_api_key` 读取
-- 文本调用 `open.bigmodel.cn/api/paas/v4/chat/completions`（model: GLM-4-Flash）
-- 图片调用同样 endpoint（model: GLM-4V-Flash），图片以 base64 内嵌在 content 中
+- 文本/分类匹配 → GLM-4-Flash
+- 图片识别 → GLM-4V-Flash
+- 语音转文字 → GLM-4-Voice
 
 ### 2. AI 记账弹窗 — `src/renderer/components/AIRecordModal.tsx`（新建）
 
@@ -143,6 +169,10 @@ analyzeAccounting(input: { text?: string; imageBase64?: string }): Promise<Recor
 - 智谱 API Key 输入框（密码型，有「显示/隐藏」切换）
 - 获取 Key 引导链接：`https://open.bigmodel.cn`
 - 模型展示：GLM-4-Flash / GLM-4V-Flash / GLM-4-Voice（免费标签）
+- **店铺→类别映射表**：列表展示已有映射，可添加/删除
+  - 添加：下拉选店铺名（手动输入）+ 下拉选分类 → 保存
+  - 删除：点击 ❌ 移除映射
+  - 数据存储在 localStorage `store_mappings_{userId}`
 
 ## 撤销机制
 
