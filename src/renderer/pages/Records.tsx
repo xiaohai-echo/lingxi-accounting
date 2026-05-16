@@ -16,6 +16,7 @@ import { fetchAccounts } from '../store/slices/accountsSlice'
 import type { Record as RecordType } from '../../main/database/schema'
 import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_COLORS } from '../utils/constants'
 import { getApiKeyStatus, analyzeAccounting } from '../services/ai'
+import { getApi } from '../api/mock'
 import type { AccountItem, CategoryItem } from '../services/ai'
 
 const { Option } = Select
@@ -241,7 +242,7 @@ const Records: React.FC<RecordsProps> = ({
         type: values.type,
         categoryId: values.categoryId,
         accountId: values.accountId,
-        ledgerId: currentLedgerId ?? undefined,
+        ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
         date: values.date.format('YYYY-MM-DD'),
         note: values.note || '',
         syncedAt: undefined,
@@ -310,13 +311,14 @@ const Records: React.FC<RecordsProps> = ({
         type: recordInput.type,
         categoryId: recordInput.categoryId ?? 0,
         accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
-        ledgerId: currentLedgerId ?? undefined,
+        ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
         date: recordInput.time && recordInput.time !== '00:00:00'
           ? `${recordInput.date} ${recordInput.time}`
           : recordInput.date,
-        note: recordInput.note,
+        note: `🤖 ${recordInput.note}`,
         createdAt: new Date().toISOString()
       })).unwrap()
+      getApi().addLog("ai_record", `AI记账: ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categories.find(c => c.id === recordInput.categoryId)?.name} | ${accounts.find(a => a.id === recordInput.accountId)?.name}`)
       const category = categories.find(c => c.id === recordInput.categoryId)
       const account = accounts.find(a => a.id === recordInput.accountId)
       message.success(`AI记账: ¥${recordInput.amount.toFixed(2)} · ${category?.name ?? '未分类'} - ${account?.name ?? '默认账户'}`)
