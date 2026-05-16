@@ -154,6 +154,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
   // --- Voice mode ---
   const [isRecording, setIsRecording] = useState(false)
+  const [volume, setVolume] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const voiceStreamRef = useRef<MediaStream | null>(null)
@@ -247,7 +248,9 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
           categoryId: recordInput.categoryId ?? 0,
           accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
           ledgerId: currentLedgerId ?? undefined,
-          date: recordInput.date,
+          date: recordInput.time && recordInput.time !== '00:00:00'
+            ? `${recordInput.date} ${recordInput.time}`
+            : recordInput.date,
           note: recordInput.note
         })
 
@@ -262,6 +265,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
         showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
         onClose()
+        onSuccess()
       } catch (e) {
         setLoading(false)
         setLoadingText('')
@@ -425,7 +429,11 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
       setCameraStream(null)
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
       })
       setCameraStream(stream)
 
@@ -493,6 +501,25 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       voiceStreamRef.current = stream
 
+      // Setup volume meter
+      let audioCtx: AudioContext | null = null
+      let analyser: AnalyserNode | null = null
+      let volumeTimer: ReturnType<typeof setInterval> | null = null
+      try {
+        audioCtx = new AudioContext()
+        analyser = audioCtx.createAnalyser()
+        analyser.fftSize = 256
+        const source = audioCtx.createMediaStreamSource(stream)
+        source.connect(analyser)
+        const dataArray = new Uint8Array(analyser.frequencyBinCount)
+        volumeTimer = setInterval(() => {
+          if (!analyser) return
+          analyser.getByteFrequencyData(dataArray)
+          const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+          setVolume(Math.min(1, avg / 128))
+        }, 100)
+      } catch { /* AudioContext not available */ }
+
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm'
@@ -509,6 +536,9 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
       recorder.onstop = async () => {
         setIsRecording(false)
+        setVolume(0)
+        if (volumeTimer) clearInterval(volumeTimer)
+        if (audioCtx) audioCtx.close().catch(() => {})
         stopMediaStream(stream)
         voiceStreamRef.current = null
 
@@ -526,7 +556,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
           try {
             // Step 1: Transcribe voice to text
-            const transcription = await transcribeVoice(base64)
+            const transcription = await transcribeVoice(base64, mimeType)
 
             // Step 2: Analyze accounting from transcribed text
             const accountsForAI: AccountItem[] = accounts.map((a) => ({
@@ -560,7 +590,9 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
               categoryId: recordInput.categoryId ?? 0,
               accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
               ledgerId: currentLedgerId ?? undefined,
-              date: recordInput.date,
+              date: recordInput.time && recordInput.time !== '00:00:00'
+                ? `${recordInput.date} ${recordInput.time}`
+                : recordInput.date,
               note: recordInput.note
             })
 
@@ -574,6 +606,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
             showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
             onClose()
+            onSuccess()
           } catch (e) {
             setLoading(false)
             setLoadingText('')
@@ -739,7 +772,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
             ref={videoRef}
             autoPlay
             playsInline
-            style={{ width: '100%', display: 'block' }}
+            style={{ width: '100%', display: 'block', filter: 'brightness(1.3) contrast(1.1)' }}
           />
         </div>
         <canvas ref={canvasRef} style={{ display: 'none' }} />
@@ -786,7 +819,16 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
           }}
         />
       </div>
-      <Text type="secondary" style={{ fontSize: 14 }}>
+      <div style={{ width: 120, height: 6, background: '#f0f0f0', borderRadius: 3, marginTop: 12, overflow: 'hidden' }}>
+        <div style={{
+          width: `${volume * 100}%`,
+          height: '100%',
+          background: volume > 0.7 ? '#52c41a' : volume > 0.3 ? '#667eea' : '#d9d9d9',
+          borderRadius: 3,
+          transition: 'width 0.1s ease, background 0.2s'
+        }} />
+      </div>
+      <Text type="secondary" style={{ fontSize: 14, marginTop: 8 }}>
         {isRecording ? '正在录音，点击停止…' : '点击开始录音'}
       </Text>
       <style>{`

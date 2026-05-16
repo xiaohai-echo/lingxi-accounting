@@ -8,6 +8,7 @@ export interface ExtractedInfo {
   type: 'income' | 'expense'
   description: string
   date: string
+  time?: string
   paymentMethod?: string
   cardLast4?: string | null
 }
@@ -18,6 +19,7 @@ export interface RecordInput {
   categoryId?: number
   accountId?: number
   date: string
+  time?: string
   note: string
   paymentMethod?: string
   cardLast4?: string | null
@@ -214,6 +216,19 @@ export function parseExtracted(raw: string): ExtractedInfo {
     date = `${y}-${m}-${d}`
   }
 
+  // Validate time format HH:mm:ss, fallback to current time
+  let time = String(obj.time || '')
+  const timePattern = /^\d{2}:\d{2}(:\d{2})?$/
+  if (!timePattern.test(time)) {
+    const now = new Date()
+    const hh = String(now.getHours()).padStart(2, '0')
+    const mm = String(now.getMinutes()).padStart(2, '0')
+    const ss = String(now.getSeconds()).padStart(2, '0')
+    time = `${hh}:${mm}:${ss}`
+  } else if (time.length === 5) {
+    time += ':00'
+  }
+
   // Optional fields
   const paymentMethod = obj.paymentMethod ? String(obj.paymentMethod) : undefined
   const cardLast4 = obj.cardLast4 && obj.cardLast4 !== null ? String(obj.cardLast4) : null
@@ -223,6 +238,7 @@ export function parseExtracted(raw: string): ExtractedInfo {
     type,
     description: description.trim(),
     date,
+    time,
     paymentMethod: paymentMethod || undefined,
     cardLast4: cardLast4 && cardLast4.length > 0 ? cardLast4 : null
   }
@@ -237,6 +253,7 @@ function buildExtractionPrompt(text: string): string {
   "type": "income" 或 "expense",
   "description": "简短描述",
   "date": "YYYY-MM-DD 格式",
+  "time": "HH:mm:ss 格式，如无提及则用00:00:00",
   "paymentMethod": "支付方式（如：微信、支付宝、现金、银行卡等，可选）",
   "cardLast4": "银行卡后四位（如无则为null）"
 }
@@ -295,8 +312,9 @@ export async function extractFromImage(base64: string): Promise<ExtractedInfo> {
 
 // ==================== Voice Transcription ====================
 
-export async function transcribeVoice(audioBase64: string): Promise<string> {
-  const audioUrl = audioBase64.startsWith('data:') ? audioBase64 : `data:audio/wav;base64,${audioBase64}`
+export async function transcribeVoice(audioBase64: string, mimeType?: string): Promise<string> {
+  const mime = mimeType || 'audio/webm'
+  const audioUrl = audioBase64.startsWith('data:') ? audioBase64 : `data:${mime};base64,${audioBase64}`
 
   const content = await callZhipu('glm-4-voice', [
     {
@@ -306,7 +324,7 @@ export async function transcribeVoice(audioBase64: string): Promise<string> {
         { type: 'audio_url', audio_url: { url: audioUrl } }
       ]
     }
-  ])
+  ]).catch(() => '')
   return content.trim()
 }
 
@@ -448,7 +466,7 @@ export async function analyzeAccounting(options: {
     throw new Error('请提供文本或图片输入')
   }
 
-  const { amount, type, description, date, paymentMethod, cardLast4 } = extracted
+  const { amount, type, description, date, time, paymentMethod, cardLast4 } = extracted
 
   // Step 2: Try store mapping match first (local, no API call)
   let categoryId: number | undefined
@@ -474,6 +492,7 @@ export async function analyzeAccounting(options: {
     categoryId,
     accountId: account?.id,
     date,
+    time,
     note: description,
     paymentMethod,
     cardLast4
