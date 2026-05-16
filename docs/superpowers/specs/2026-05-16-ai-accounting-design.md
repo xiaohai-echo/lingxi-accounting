@@ -14,12 +14,12 @@ UI 层:  Dashboard AI面板  +  Records 弹窗 AI Tab
 Service 层:  src/renderer/services/ai.ts
               ├─ analyzeText(text) → 提取记账信息 → 匹配分类/账户 → 写入
               ├─ analyzeImage(base64) → GLM-4V-Flash 识别 → 提取记账信息 → 匹配 → 写入
-              └─ transcribeVoice() → Web Speech API → analyzeText()
+              └─ analyzeVoice(audioBase64) → GLM-4-Voice 转文字 → analyzeText()
               ↓
 API 层:  智谱 (open.bigmodel.cn)
           ├─ GLM-4-Flash     → 文本解析（免费）
           ├─ GLM-4V-Flash    → 图片识别（免费）
-          └─ Web Speech API  → 浏览器语音识别（无需API Key）
+          └─ GLM-4-Voice     → 语音转文字（免费）
               ↓
 存储层:  mockApi.addRecord() → localStorage
 ```
@@ -31,7 +31,7 @@ API 层:  智谱 (open.bigmodel.cn)
 | 文本记账 | GLM-4-Flash | 免费文本模型，解析自然语言描述 |
 | 截图记账 | GLM-4V-Flash | 免费视觉模型，识别账单截图中的金额/商户/日期 |
 | 拍照识别 | GLM-4V-Flash | 同截图，摄像头实时拍摄后上传识别 |
-| 语音记账 | Web Speech API → GLM-4-Flash | 浏览器语音转文字 → 文本模型解析 |
+| 语音记账 | GLM-4-Voice → GLM-4-Flash | 语音模型转文字 → 文本模型解析 |
 
 ## 功能入口
 
@@ -60,7 +60,7 @@ AI 从输入中提取结构化数据，**不直接指定最终类别**，而是�
 
 - 文本模式：prompt 要求 GLM-4-Flash 返回上述 JSON
 - 图片模式：prompt 要求 GLM-4V-Flash 识别图片中的金额、商户名、日期，返回同样 JSON
-- 语音模式：Web Speech API 转文字后再走文本流程
+- 语音模式：GLM-4-Voice 将录音 base64 转文字后再走文本流程
 
 ### 第二步：匹配类别和账户
 
@@ -115,7 +115,7 @@ analyzeAccounting(input: { text?: string; imageBase64?: string }): Promise<Recor
 - **文本模式**：textarea + 发送按钮，底部提示「例如：今天午餐花了30元现金」
 - **截图模式**：拖拽/粘贴图片区域 + 文件选择按钮，上传后预览
 - **拍照模式**：`navigator.mediaDevices.getUserMedia` 打开摄像头，实时预览 + 拍照按钮
-- **语音模式**：Web Speech API SpeechRecognition，录音按钮（仅 Chrome/Edge 支持）
+- **语音模式**：MediaRecorder 录音 → base64 → GLM-4-Voice 转文字 → GLM-4-Flash 解析
 
 交互流程：
 ```
@@ -142,7 +142,7 @@ analyzeAccounting(input: { text?: string; imageBase64?: string }): Promise<Recor
 新增「AI 设置」卡片：
 - 智谱 API Key 输入框（密码型，有「显示/隐藏」切换）
 - 获取 Key 引导链接：`https://open.bigmodel.cn`
-- 模型展示：GLM-4-Flash / GLM-4V-Flash（免费标签）
+- 模型展示：GLM-4-Flash / GLM-4V-Flash / GLM-4-Voice（免费标签）
 
 ## 撤销机制
 
@@ -158,7 +158,8 @@ analyzeAccounting(input: { text?: string; imageBase64?: string }): Promise<Recor
 | API Key 未配置 | 「请先在设置页配置智谱 API Key」 |
 | API Key 无效（401/403） | 「API Key 无效，请前往设置页重新配置」 |
 | API 返回格式异常 | 「AI 解析失败，请重试」 |
-| 语音识别不支持 | 「当前浏览器不支持语音识别，请使用 Chrome 或 Edge」 |
+| 麦克风权限拒绝 | 「无法访问麦克风，请检查权限设置」 |
+| 语音识别失败 | 「语音识别失败，请重试」 |
 | 摄像头权限拒绝 | 「无法访问摄像头，请检查权限设置」 |
 | 图片过大（>10MB） | 「图片过大，请压缩后重试」 |
 
