@@ -5,17 +5,20 @@
 
 export interface ExtractedInfo {
   amount: number
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'transfer'
   description: string
   date: string
   time?: string
   paymentMethod?: string
   cardLast4?: string | null
+  transferType?: 'transfer' | 'withdraw' | 'recharge'
+  targetPaymentMethod?: string
+  targetCardLast4?: string | null
 }
 
 export interface RecordInput {
   amount: number
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'transfer'
   categoryId?: number
   accountId?: number
   date: string
@@ -23,6 +26,9 @@ export interface RecordInput {
   note: string
   paymentMethod?: string
   cardLast4?: string | null
+  transferType?: 'transfer' | 'withdraw' | 'recharge'
+  targetAccountId?: number
+  fee?: number
 }
 
 export interface CategoryItem {
@@ -194,10 +200,10 @@ export function parseExtracted(raw: string): ExtractedInfo {
 
   // Validate type
   const rawType = obj.type
-  if (rawType !== 'income' && rawType !== 'expense') {
+  if (rawType !== 'income' && rawType !== 'expense' && rawType !== 'transfer') {
     throw new Error('PARSE_ERROR')
   }
-  const type: 'income' | 'expense' = rawType
+  const type: 'income' | 'expense' | 'transfer' = rawType
 
   // Validate description
   const description = String(obj.description || obj.desc || '')
@@ -233,6 +239,12 @@ export function parseExtracted(raw: string): ExtractedInfo {
   const paymentMethod = obj.paymentMethod ? String(obj.paymentMethod) : undefined
   const cardLast4 = obj.cardLast4 && obj.cardLast4 !== null ? String(obj.cardLast4) : null
 
+  const rawTransferType = obj.transferType ? String(obj.transferType) : ''
+  const transferType: 'transfer' | 'withdraw' | 'recharge' | undefined =
+    ['transfer', 'withdraw', 'recharge'].includes(rawTransferType) ? rawTransferType as any : undefined
+  const targetPaymentMethod = obj.targetPaymentMethod ? String(obj.targetPaymentMethod) : undefined
+  const targetCardLast4 = obj.targetCardLast4 && obj.targetCardLast4 !== null ? String(obj.targetCardLast4) : null
+
   return {
     amount,
     type,
@@ -240,7 +252,10 @@ export function parseExtracted(raw: string): ExtractedInfo {
     date,
     time,
     paymentMethod: paymentMethod || undefined,
-    cardLast4: cardLast4 && cardLast4.length > 0 ? cardLast4 : null
+    cardLast4: cardLast4 && cardLast4.length > 0 ? cardLast4 : null,
+    transferType,
+    targetPaymentMethod,
+    targetCardLast4: targetCardLast4 && targetCardLast4.length > 0 ? targetCardLast4 : null
   }
 }
 
@@ -250,13 +265,21 @@ function buildExtractionPrompt(text: string): string {
   return `从以下用户输入中提取记账信息，返回纯 JSON 格式（不要 markdown 代码块）：
 {
   "amount": 数字（大于0）,
-  "type": "income" 或 "expense",
-  "description": "简短描述",
+  "type": "income"、"expense" 或 "transfer",
+  "description": "简短描述消费内容或转账说明",
   "date": "YYYY-MM-DD 格式",
   "time": "HH:mm:ss 格式，如无提及则用00:00:00",
-  "paymentMethod": "支付方式（如：微信、支付宝、现金、银行卡等，可选）",
-  "cardLast4": "银行卡后四位（如无则为null）"
+  "paymentMethod": "支付来源（如：微信、支付宝、现金、银行卡、花呗、零钱等，可选）",
+  "cardLast4": "银行卡后四位（如无则为null）",
+  "transferType": "如type为transfer，标记为transfer/withdraw/recharge，否则为null",
+  "targetPaymentMethod": "转账/提现的目标账户描述（如：银行卡、微信零钱等，可选）",
+  "targetCardLast4": "目标银行卡后四位（如无则为null）"
 }
+
+识别规则：
+- 提现：从微信/支付宝/银行卡提到银行卡 → type: "transfer", transferType: "withdraw"
+- 充值：从银行卡转到微信/支付宝 → type: "transfer", transferType: "recharge"
+- 转账：账户间互转 → type: "transfer", transferType: "transfer"
 
 用户输入：${text}`
 }
@@ -395,7 +418,7 @@ export function matchAccount(
   paymentMethod: string | undefined,
   cardLast4: string | null | undefined,
   accounts: AccountItem[],
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'transfer' = 'expense'
 ): AccountItem | null {
   if (!accounts || accounts.length === 0) return null
 
@@ -411,6 +434,16 @@ export function matchAccount(
   if (paymentMethod) {
     const method = paymentMethod.toLowerCase()
 
+    if (method.includes('花呗')) {
+      const huabei = accounts.find(a => a.name && (a.name.includes('花呗') || a.name.includes('花贝')))
+      if (huabei) return huabei
+      const alipay = accounts.find(a => a.type === 'alipay')
+      if (alipay) return alipay
+    }
+    if (method.includes('零钱')) {
+      const wechat = accounts.find(a => a.type === 'wechat' || (a.name && a.name.includes('微信')))
+      if (wechat) return wechat
+    }
     if (method.includes('微信') || method.includes('wechat')) {
       const wechat = accounts.find(a => a.type === 'wechat')
       if (wechat) return wechat
@@ -466,34 +499,43 @@ export async function analyzeAccounting(options: {
     throw new Error('请提供文本或图片输入')
   }
 
-  const { amount, type, description, date, time, paymentMethod, cardLast4 } = extracted
+  const { amount, type, description, date, time, paymentMethod, cardLast4, transferType, targetPaymentMethod, targetCardLast4 } = extracted
 
   // Step 2: Try store mapping match first (local, no API call)
   let categoryId: number | undefined
-  const storeMatch = matchStoreMapping(description)
-  if (storeMatch !== null) {
-    categoryId = storeMatch
+  if (type !== 'transfer') {
+    const storeMatch = matchStoreMapping(description)
+    if (storeMatch !== null) {
+      categoryId = storeMatch
+    }
   }
 
-  // Step 3: AI match category (only if no store mapping found)
-  if (categoryId === undefined) {
+  // Step 3: AI match category (only if no store mapping found, and not transfer)
+  if (categoryId === undefined && type !== 'transfer') {
     const aiMatch = await aiMatchCategory(description, type, options.categories)
     if (aiMatch !== null) {
       categoryId = aiMatch
     }
   }
 
-  // Step 4: Match account by payment method and card info
+  // Step 4: Match accounts
   const account = matchAccount(paymentMethod, cardLast4, options.accounts, type)
+  let targetAccountId: number | undefined
+  if (type === 'transfer') {
+    const targetAccount = matchAccount(targetPaymentMethod, targetCardLast4, options.accounts, 'expense')
+    targetAccountId = targetAccount?.id
+  }
 
   return {
     amount,
     type,
     categoryId,
     accountId: account?.id,
+    targetAccountId,
     date,
     time,
     note: description,
+    transferType,
     paymentMethod,
     cardLast4
   }
