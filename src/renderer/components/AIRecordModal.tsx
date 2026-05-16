@@ -258,11 +258,11 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
           type: recordInput.type,
           categoryId: recordInput.categoryId ?? 0,
           accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
-          ledgerId: currentLedgerId ?? undefined,
+          ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
           date: recordInput.time && recordInput.time !== '00:00:00'
             ? `${recordInput.date} ${recordInput.time}`
             : recordInput.date,
-          note: recordInput.note
+          note: `🤖 ${recordInput.note}`
         })
 
         setLoading(false)
@@ -273,6 +273,12 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
         const account = accounts.find((a) => a.id === recordInput.accountId)
         const categoryName = category?.name ?? '未分类'
         const accountName = account?.name ?? '默认账户'
+
+        const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
+
+
+        getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
+
 
         showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
         onClose()
@@ -595,11 +601,11 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
               amount: recordInput.amount, type: recordInput.type,
               categoryId: recordInput.categoryId ?? 0,
               accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
-              ledgerId: currentLedgerId ?? undefined,
+              ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
               date: recordInput.time && recordInput.time !== '00:00:00'
                 ? `${recordInput.date} ${recordInput.time}`
                 : recordInput.date,
-              note: recordInput.note
+              note: `🤖 ${recordInput.note}`
             })
             setLoading(false)
             setLoadingText('')
@@ -607,6 +613,10 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
             const account = accounts.find((a) => a.id === recordInput.accountId)
             const categoryName = category?.name ?? '未分类'
             const accountName = account?.name ?? '默认账户'
+            const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
+
+            getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
+
             showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
             onClose()
             onSuccess()
@@ -620,7 +630,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
           }
         }
 
-        if (audioChunksRef.current.length === 0) return
+        if (audioChunksRef.current.length === 0) { setLoading(true); setLoadingText(""); handleError(new Error("VOICE_ERROR"), message); return }
 
         const blob = new Blob(audioChunksRef.current, { type: mimeType })
 
@@ -635,6 +645,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
           try {
             // Step 1: Transcribe voice to text
             const transcription = await transcribeVoice(base64, mimeType)
+            if (!transcription.trim()) throw new Error("VOICE_ERROR")
 
             // Step 2: Analyze accounting from transcribed text
             const accountsForAI: AccountItem[] = accounts.map((a) => ({
@@ -667,11 +678,11 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
               type: recordInput.type,
               categoryId: recordInput.categoryId ?? 0,
               accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
-              ledgerId: currentLedgerId ?? undefined,
+              ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
               date: recordInput.time && recordInput.time !== '00:00:00'
                 ? `${recordInput.date} ${recordInput.time}`
                 : recordInput.date,
-              note: recordInput.note
+              note: `🤖 ${recordInput.note}`
             })
 
             setLoading(false)
@@ -681,6 +692,12 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
             const account = accounts.find((a) => a.id === recordInput.accountId)
             const categoryName = category?.name ?? '未分类'
             const accountName = account?.name ?? '默认账户'
+
+            const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
+
+
+            getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
+
 
             showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
             onClose()
