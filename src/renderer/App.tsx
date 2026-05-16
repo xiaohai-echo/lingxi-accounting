@@ -117,11 +117,6 @@ function AppContent() {
     setMobileNavKey(key)
   }
 
-  const handleQuickRecord = () => {
-    setActiveKey('2')
-    setMobileNavKey('2')
-    setAutoOpenRecordsAdd(true)
-  }
 
   const handleViewAccountRecords = (accountId: number) => {
     setRecordFilterAccountId(accountId)
@@ -165,7 +160,7 @@ function AppContent() {
 
   const renderContent = () => {
     switch (isMobile ? mobileNavKey : activeKey) {
-      case '1': return <Dashboard onNavigate={handleSwitchToRecords} onQuickRecord={handleQuickRecord} isDark={isDark} />
+      case '1': return <Dashboard onNavigate={handleSwitchToRecords} isDark={isDark} />
       case '2': return <Records isDark={isDark} autoOpenAdd={autoOpenRecordsAdd} onAutoOpenHandled={() => setAutoOpenRecordsAdd(false)} initialFilterAccountId={recordFilterAccountId} initialFilterCategoryId={recordFilterCategoryId} onFilterConsumed={() => { setRecordFilterAccountId(null); setRecordFilterCategoryId(null) }} />
       case '3': return <Accounts isDark={isDark} onViewAccountRecords={handleViewAccountRecords} />
       case '4': return <Categories isDark={isDark} onViewCategoryRecords={handleViewCategoryRecords} />
@@ -173,7 +168,7 @@ function AppContent() {
       case '6': return <Settings isDark={isDark} onToggleTheme={onToggleTheme} />
       case '7': return <LedgerManage />
       case '8': return <Logs isDark={isDark} />
-      default: return <Dashboard onNavigate={handleSwitchToRecords} onQuickRecord={handleQuickRecord} isDark={isDark} />
+      default: return <Dashboard onNavigate={handleSwitchToRecords} isDark={isDark} />
     }
   }
 

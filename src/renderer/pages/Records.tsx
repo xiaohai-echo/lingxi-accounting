@@ -55,6 +55,7 @@ const Records: React.FC<RecordsProps> = ({
   const [editingRecord, setEditingRecord] = useState<RecordType | null>(null)
   const [recordType, setRecordType] = useState<'income' | 'expense'>('expense')
   const [activeTab, setActiveTab] = useState('all')
+  const [addModalTab, setAddModalTab] = useState<'manual' | 'ai'>('manual')
   const [searchText, setSearchText] = useState('')
   const [form] = Form.useForm()
 
@@ -164,6 +165,7 @@ const Records: React.FC<RecordsProps> = ({
     setEditingRecord(null)
     form.resetFields()
     setRecordType('expense')
+    setAddModalTab('manual')
     form.setFieldsValue({ date: dayjs(), time: dayjs(), type: 'expense' })
     setIsModalOpen(true)
   }
@@ -581,53 +583,78 @@ const Records: React.FC<RecordsProps> = ({
         )}
       </Card>
 
-      <Modal title={editingRecord ? "编辑记录" : "添加记录"} open={isModalOpen} onOk={handleOk} onCancel={() => setIsModalOpen(false)} okText="确定" cancelText="取消" width={480}>
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="type" label="类型" rules={[{ required: true, message: '请选择类型' }]}>
-            <Select onChange={(value) => setRecordType(value)} size="large">
-              <Option value="expense">💸 支出</Option>
-              <Option value="income">💰 收入</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="amount" label="金额" rules={[{ required: true, message: '请输入金额' }]}>
-            <InputNumber style={{ width: '100%' }} placeholder="请输入金额" precision={2} min={0.01} size="large" prefix="¥" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="categoryId" label="分类" rules={[{ required: true, message: '请选择分类' }]}>
-                <Select placeholder="选择分类" size="large">
-                  {filteredCategories.map(category => (<Option key={category.id} value={category.id}>{category.icon} {category.name}</Option>))}
+      <Modal
+        title={editingRecord ? "编辑记录" : "添加记录"}
+        open={isModalOpen}
+        onOk={addModalTab === 'manual' ? handleOk : undefined}
+        onCancel={() => setIsModalOpen(false)}
+        okText={addModalTab === 'manual' ? "确定" : undefined}
+        cancelText="取消"
+        width={520}
+        footer={addModalTab === 'manual' ? undefined : null}
+      >
+        <Tabs activeKey={addModalTab} onChange={(k: string) => setAddModalTab(k as 'manual' | 'ai')}>
+          <Tabs.TabPane tab="手动记账" key="manual">
+            <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+              <Form.Item name="type" label="类型" rules={[{ required: true, message: '请选择类型' }]}>
+                <Select onChange={(value) => setRecordType(value)} size="large">
+                  <Option value="expense">💸 支出</Option>
+                  <Option value="income">💰 收入</Option>
                 </Select>
               </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="accountId" label="账户" rules={[{ required: true, message: '请选择账户' }]}>
-                <Select placeholder="选择账户" size="large">
-                  {Object.entries(accountsByType).map(([type, accs]) => (
-                    <Select.OptGroup key={type} label={`${ACCOUNT_TYPE_ICONS[type] || '💰'} ${ACCOUNT_TYPE_LABELS[type] || type}`}>
-                      {accs.map(acc => (<Option key={acc.id} value={acc.id}>{acc.name}{acc.cardNo ? ` (尾号${acc.cardNo})` : ''}{acc.bankName ? ` - ${acc.bankName}` : ''}</Option>))}
-                    </Select.OptGroup>
-                  ))}
-                </Select>
+              <Form.Item name="amount" label="金额" rules={[{ required: true, message: '请输入金额' }]}>
+                <InputNumber style={{ width: '100%' }} placeholder="请输入金额" precision={2} min={0.01} size="large" prefix="¥" />
               </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="date" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
-                <DatePicker style={{ width: '100%' }} size="large" />
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="categoryId" label="分类" rules={[{ required: true, message: '请选择分类' }]}>
+                    <Select placeholder="选择分类" size="large">
+                      {filteredCategories.map(category => (<Option key={category.id} value={category.id}>{category.icon} {category.name}</Option>))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="accountId" label="账户" rules={[{ required: true, message: '请选择账户' }]}>
+                    <Select placeholder="选择账户" size="large">
+                      {Object.entries(accountsByType).map(([type, accs]) => (
+                        <Select.OptGroup key={type} label={`${ACCOUNT_TYPE_ICONS[type] || '💰'} ${ACCOUNT_TYPE_LABELS[type] || type}`}>
+                          {accs.map(acc => (<Option key={acc.id} value={acc.id}>{acc.name}{acc.cardNo ? ` (尾号${acc.cardNo})` : ''}{acc.bankName ? ` - ${acc.bankName}` : ''}</Option>))}
+                        </Select.OptGroup>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="date" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
+                    <DatePicker style={{ width: '100%' }} size="large" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="time" label="时间" rules={[{ required: true, message: '请选择时间' }]}>
+                    <TimePicker style={{ width: '100%' }} size="large" format="HH:mm:ss" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item name="note" label="备注">
+                <TextArea rows={2} placeholder="添加备注（可选）" />
               </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="time" label="时间" rules={[{ required: true, message: '请选择时间' }]}>
-                <TimePicker style={{ width: '100%' }} size="large" format="HH:mm:ss" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="note" label="备注">
-            <TextArea rows={2} placeholder="添加备注（可选）" />
-          </Form.Item>
-        </Form>
+            </Form>
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="🤖 AI 记账" key="ai">
+            <div style={{ padding: '24px 0', textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
+              <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>AI 智能记账</div>
+              <div style={{ color: '#999', fontSize: 13, marginBottom: 16 }}>
+                通过 AI 自动识别账单信息，快速完成记账
+              </div>
+              <Button type="primary" size="large" onClick={() => {
+                setIsModalOpen(false)
+              }}>前往使用</Button>
+            </div>
+          </Tabs.TabPane>
+        </Tabs>
       </Modal>
 
       <Modal

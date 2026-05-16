@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useSelector, useDispatch } from 'react-redux'
 import { Card, Row, Col, Statistic, List, Button, Tooltip, Select, Segmented } from 'antd'
-import { PlusOutlined, RightOutlined } from '@ant-design/icons'
+import { RightOutlined } from '@ant-design/icons'
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Area, AreaChart, CartesianGrid, XAxis, YAxis, Legend, BarChart, Bar } from 'recharts'
 import dayjs from 'dayjs'
-import type { RootState } from '../store'
+import type { RootState, AppDispatch } from '../store'
 import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_COLORS } from '../utils/constants'
+import { fetchRecords } from '../store/slices/recordsSlice'
+import { fetchAccounts } from '../store/slices/accountsSlice'
+import AIRecordModal, { AIMode } from '../components/AIRecordModal'
 
 const TREND_PERIODS = [
   { label: '近7天', value: 7 },
@@ -18,11 +21,10 @@ const TREND_PERIODS = [
 
 interface DashboardProps {
   onNavigate?: (key: string) => void
-  onQuickRecord?: () => void
   isDark?: boolean
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark = true }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isDark = true }) => {
   const { items: records, loading } = useSelector((state: RootState) => state.records)
   const { items: accounts } = useSelector((state: RootState) => state.accounts)
   const { items: categories } = useSelector((state: RootState) => state.categories)
@@ -31,6 +33,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
   const [trendDays, setTrendDays] = useState(30)
   const [categoryChartType, setCategoryChartType] = useState<'pie' | 'bar'>('pie')
   const [accountChartType, setAccountChartType] = useState<'pie' | 'bar'>('pie')
+  const dispatch = useDispatch<AppDispatch>()
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiMode, setAiMode] = useState<AIMode>('text')
 
   const SECONDARY = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)'
   const TERTIARY = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)'
@@ -300,14 +305,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
   return (
     <div>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', cursor: 'pointer' }}
-          onClick={() => onQuickRecord ? onQuickRecord() : onNavigate?.('2')}>
-            <div style={{ textAlign: 'center', padding: '4px 0' }}>
-              <PlusOutlined style={{ fontSize: 20, color: '#fff', marginBottom: 4 }} />
-              <div style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>快速记账</div>
-              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 2 }}>点击直接记账</div>
-            </div>
+        <Col xs={24} sm={24} md={12}>
+          <Card title="🤖 AI 智能记账" bodyStyle={{ padding: '12px 16px' }}>
+            <Row gutter={[12, 12]}>
+              {[
+                { key: 'text' as AIMode, icon: '💬', label: '文本记账', color: '#667eea' },
+                { key: 'screenshot' as AIMode, icon: '📷', label: '截图记账', color: '#52c41a' },
+                { key: 'camera' as AIMode, icon: '📸', label: '拍照识别', color: '#fa8c16' },
+                { key: 'voice' as AIMode, icon: '🎤', label: '语音记账', color: '#f5222d' },
+              ].map(btn => (
+                <Col xs={12} sm={12} md={6} key={btn.key}>
+                  <Card hoverable
+                    style={{ textAlign: 'center', borderColor: btn.color, borderWidth: 1 }}
+                    bodyStyle={{ padding: '12px 8px' }}
+                    onClick={() => { setAiMode(btn.key); setAiModalOpen(true) }}
+                  >
+                    <div style={{ fontSize: 24, marginBottom: 4 }}>{btn.icon}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: btn.color }}>{btn.label}</div>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
           </Card>
         </Col>
         <Col xs={12} sm={12} md={6}>
@@ -532,6 +550,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
           </Card>
         </Col>
       </Row>
+      <AIRecordModal
+        open={aiModalOpen}
+        mode={aiMode}
+        onClose={() => setAiModalOpen(false)}
+        onSuccess={() => {
+          dispatch(fetchRecords() as any)
+          dispatch(fetchAccounts() as any)
+        }}
+      />
     </div>
   )
 }
