@@ -38,6 +38,7 @@ function formatBytes(bytes: number): string {
 
 export default function Settings({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme: () => void }) {
   const { currentUser } = useSelector((state: RootState) => state.user)
+  const { items: categories } = useSelector((state: RootState) => state.categories)
   const dispatch = useDispatch<AppDispatch>()
   const { message: msgApi, modal } = App.useApp()
 
@@ -65,6 +66,14 @@ export default function Settings({ isDark, onToggleTheme }: { isDark: boolean; o
   const [selectiveExportVisible, setSelectiveExportVisible] = useState(false)
   const [selectedExportLedgerIds, setSelectedExportLedgerIds] = useState<number[]>([])
   const [dataLoading, setDataLoading] = useState(false)
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('zhipu_api_key') || '')
+  const [showKey, setShowKey] = useState(false)
+  const [storeMappings, setStoreMappings] = useState<Array<{ storeName: string; categoryId: number }>>(() => {
+    const userId = localStorage.getItem('userId') || '0'
+    try { return JSON.parse(localStorage.getItem(`store_mappings_${userId}`) || '[]') } catch { return [] }
+  })
+  const [newStoreName, setNewStoreName] = useState('')
+  const [newStoreCategory, setNewStoreCategory] = useState<number | null>(null)
 
   useEffect(() => { loadSyncStatus(); loadDataStats() }, [])
   useEffect(() => {
@@ -294,6 +303,44 @@ export default function Settings({ isDark, onToggleTheme }: { isDark: boolean; o
     } catch { msgApi.error('恢复失败') }
   }})}
 
+  // AI settings handlers
+  const handleSaveApiKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem('zhipu_api_key', apiKey.trim())
+      msgApi.success('API Key 已保存')
+    } else {
+      localStorage.removeItem('zhipu_api_key')
+      setApiKey('')
+      msgApi.success('API Key 已清除')
+    }
+  }
+
+  const handleAddMapping = () => {
+    if (!newStoreName.trim() || newStoreCategory === null) {
+      msgApi.warning('请输入店铺名称并选择类别')
+      return
+    }
+    const userId = localStorage.getItem('userId') || '0'
+    const exists = storeMappings.some(m => m.storeName === newStoreName.trim())
+    if (exists) {
+      msgApi.warning('该店铺已存在映射')
+      return
+    }
+    const updated = [...storeMappings, { storeName: newStoreName.trim(), categoryId: newStoreCategory }]
+    setStoreMappings(updated)
+    localStorage.setItem(`store_mappings_${userId}`, JSON.stringify(updated))
+    setNewStoreName('')
+    setNewStoreCategory(null)
+    msgApi.success('映射已添加')
+  }
+
+  const handleRemoveMapping = (storeName: string) => {
+    const userId = localStorage.getItem('userId') || '0'
+    const updated = storeMappings.filter(m => m.storeName !== storeName)
+    setStoreMappings(updated)
+    localStorage.setItem(`store_mappings_${userId}`, JSON.stringify(updated))
+  }
+
   const renderAvatar = () => {
     const avatar = currentUser?.avatar || '👤'
     if (isDataUrl(avatar)) return <img src={avatar} alt="头像" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover' }} />
@@ -343,6 +390,100 @@ export default function Settings({ isDark, onToggleTheme }: { isDark: boolean; o
         </Row>
         {backupHistory.length > 0 && <div style={{ marginTop: 16 }}><Text type="secondary" style={{ fontSize: 13, marginBottom: 8, display: 'block' }}>备份历史</Text>{backupHistory.slice(0,5).map((item: any, i: number) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(0,0,0,0.06)' }}><Space><HistoryOutlined style={{ color: '#667eea' }} /><Text style={{ fontSize: 13 }}>{item.label}</Text><Text type="secondary" style={{ fontSize: 11 }}>{formatBytes(item.size)}</Text></Space><Button size="small" type="link" onClick={() => handleRestoreBackup(i)}>恢复</Button></div>)}</div>}
         <input ref={importFileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportFileSelect} />
+      </Card>
+
+      {/* AI Smart Accounting */}
+      <Card style={{ marginBottom: 24 }}>
+        <Title level={5} style={{ marginBottom: 16 }}>🤖 AI 智能记账</Title>
+
+        {/* API Key Section */}
+        <div style={{ marginBottom: 16 }}>
+          <Text strong style={{ display: 'block', marginBottom: 8 }}>API Key 配置</Text>
+          <Space.Compact style={{ width: '100%', maxWidth: 420 }}>
+            {showKey ? (
+              <Input value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="请输入智谱 API Key" />
+            ) : (
+              <Input.Password value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="请输入智谱 API Key" />
+            )}
+            <Button onClick={() => setShowKey(!showKey)}>{showKey ? '隐藏' : '显示'}</Button>
+          </Space.Compact>
+          <Space style={{ marginTop: 8, marginLeft: 4 }}>
+            <Button type="primary" icon={<SaveOutlined />} onClick={handleSaveApiKey}>
+              {apiKey ? '更新' : '保存'}
+            </Button>
+            <Button onClick={() => window.open('https://open.bigmodel.cn', '_blank')} size="small" type="link">
+              获取 API Key ↗
+            </Button>
+            {apiKey && <Tag color="green">✓ 已配置</Tag>}
+          </Space>
+          <div style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              支持模型：GLM-4-Flash / GLM-4V-Flash / GLM-4-Voice
+            </Text>
+          </div>
+        </div>
+
+        <Divider />
+
+        {/* Store Mappings Section */}
+        <div>
+          <Title level={5} style={{ marginBottom: 4 }}>店铺 → 类别固定映射</Title>
+          <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>
+            设置店铺名称到记账类别的自动映射，AI 识别后将自动归类
+          </Text>
+          {storeMappings.length > 0 && (
+            <Table
+              dataSource={storeMappings.map((m, i) => ({ ...m, key: i }))}
+              pagination={false}
+              size="small"
+              style={{ marginBottom: 12 }}
+              columns={[
+                { title: '店铺名称', dataIndex: 'storeName', key: 'storeName' },
+                {
+                  title: '类别', dataIndex: 'categoryId', key: 'categoryId',
+                  render: (categoryId: number) => {
+                    const cat = categories.find(c => c.id === categoryId)
+                    return cat ? <span>{cat.icon} {cat.name}</span> : '未知'
+                  }
+                },
+                {
+                  title: '操作', key: 'action', align: 'center' as const,
+                  render: (_: any, record: { storeName: string }) => (
+                    <Button type="link" danger size="small" onClick={() => handleRemoveMapping(record.storeName)}>
+                      删除
+                    </Button>
+                  )
+                }
+              ]}
+            />
+          )}
+          <Space>
+            <Input
+              placeholder="店铺名称"
+              value={newStoreName}
+              onChange={e => setNewStoreName(e.target.value)}
+              style={{ width: 160 }}
+              onPressEnter={handleAddMapping}
+            />
+            <Select
+              placeholder="选择类别"
+              value={newStoreCategory}
+              onChange={v => setNewStoreCategory(v)}
+              style={{ width: 160 }}
+              showSearch
+              optionFilterProp="label"
+            >
+              {categories.map(cat => (
+                <Select.Option key={cat.id} value={cat.id!} label={cat.name}>
+                  {cat.icon} {cat.name}
+                </Select.Option>
+              ))}
+            </Select>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAddMapping}>
+              添加
+            </Button>
+          </Space>
+        </div>
       </Card>
 
       {/* Data Maintenance */}
