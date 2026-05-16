@@ -158,6 +158,8 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const voiceStreamRef = useRef<MediaStream | null>(null)
+  const speechResultRef = useRef<string>('')
+  const recognitionRef = useRef<any>(null)
 
   // ==================== Cleanup on close ====================
 
@@ -176,6 +178,11 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
       setCameraStream(null)
       stopMediaStream(voiceStreamRef.current)
       voiceStreamRef.current = null
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+        recognitionRef.current = null
+      }
+      speechResultRef.current = ''
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop()
       }
@@ -189,6 +196,10 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
     return () => {
       stopMediaStream(cameraStream)
       stopMediaStream(voiceStreamRef.current)
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+        recognitionRef.current = null
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop()
       }
@@ -501,6 +512,26 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       voiceStreamRef.current = stream
 
+      // Start Web Speech API recognition as primary voice input
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      let recognition: any = null
+      if (SpeechRecognition) {
+        recognition = new SpeechRecognition()
+        recognition.lang = 'zh-CN'
+        recognition.interimResults = true
+        recognition.continuous = true
+        recognition.onresult = (e: any) => {
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) {
+              speechResultRef.current += e.results[i][0].transcript
+            }
+          }
+        }
+        recognition.onerror = () => { /* silent fallback to GLM-4-Voice */ }
+        recognition.start()
+        recognitionRef.current = recognition
+      }
+
       // Setup volume meter
       let audioCtx: AudioContext | null = null
       let analyser: AnalyserNode | null = null
@@ -541,6 +572,53 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
         if (audioCtx) audioCtx.close().catch(() => {})
         stopMediaStream(stream)
         voiceStreamRef.current = null
+
+        // Check if Web Speech API produced a result first
+        if (speechResultRef.current.trim()) {
+          const speechText = speechResultRef.current.trim()
+          speechResultRef.current = ''
+          setLoading(true)
+          setLoadingText('AI 正在识别…')
+          try {
+            const accountsForAI: AccountItem[] = accounts.map((a) => ({
+              id: a.id, name: a.name, type: a.type,
+              cardNo: a.cardNo, bankName: a.bankName, holderName: a.holderName
+            }))
+            const categoriesForAI: CategoryItem[] = categories.map((c) => ({
+              id: c.id!, name: c.name, type: c.type, icon: c.icon, color: c.color
+            }))
+            const recordInput = await analyzeAccounting({
+              text: speechText, accounts: accountsForAI, categories: categoriesForAI
+            })
+            setLoadingText('正在写入…')
+            const recordId = await getApi().addRecord({
+              amount: recordInput.amount, type: recordInput.type,
+              categoryId: recordInput.categoryId ?? 0,
+              accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
+              ledgerId: currentLedgerId ?? undefined,
+              date: recordInput.time && recordInput.time !== '00:00:00'
+                ? `${recordInput.date} ${recordInput.time}`
+                : recordInput.date,
+              note: recordInput.note
+            })
+            setLoading(false)
+            setLoadingText('')
+            const category = categories.find((c) => c.id === recordInput.categoryId)
+            const account = accounts.find((a) => a.id === recordInput.accountId)
+            const categoryName = category?.name ?? '未分类'
+            const accountName = account?.name ?? '默认账户'
+            showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
+            onClose()
+            onSuccess()
+            return
+          } catch (e) {
+            setLoading(false)
+            setLoadingText('')
+            const err = e instanceof Error ? e : new Error(String(e))
+            handleError(new Error(err.message === 'API_ERROR' ? 'VOICE_ERROR' : err.message), message)
+            return
+          }
+        }
 
         if (audioChunksRef.current.length === 0) return
 
@@ -634,6 +712,10 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
   }, [accounts, categories, currentLedgerId, message, notification, onClose, onSuccess])
 
   const stopRecording = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop()
     }

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { Card, Row, Col, Statistic, List, Button, Tooltip, Select, Segmented } from 'antd'
-import { RightOutlined } from '@ant-design/icons'
+import { PlusOutlined, RightOutlined } from '@ant-design/icons'
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Area, AreaChart, CartesianGrid, XAxis, YAxis, Legend, BarChart, Bar } from 'recharts'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
@@ -21,10 +21,11 @@ const TREND_PERIODS = [
 
 interface DashboardProps {
   onNavigate?: (key: string) => void
+  onQuickRecord?: () => void
   isDark?: boolean
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isDark = true }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark = true }) => {
   const { items: records, loading } = useSelector((state: RootState) => state.records)
   const { items: accounts } = useSelector((state: RootState) => state.accounts)
   const { items: categories } = useSelector((state: RootState) => state.categories)
@@ -306,7 +307,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isDark = true }) => {
     <div>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={24} md={12}>
-          <Card title="🤖 AI 智能记账" bodyStyle={{ padding: '12px 16px' }}>
+          <Card
+            title="🤖 AI 智能记账"
+            extra={
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                size="small"
+                onClick={() => onQuickRecord ? onQuickRecord() : onNavigate?.('2')}
+                style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none' }}
+              >
+                手动记账
+              </Button>
+            }
+            bodyStyle={{ padding: '12px 16px' }}
+          >
             <Row gutter={[12, 12]}>
               {[
                 { key: 'text' as AIMode, icon: '💬', label: '文本记账', color: '#667eea' },

@@ -1,12 +1,13 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Card, List, Button, Modal, Form, Input, Select, DatePicker, InputNumber,
-  App, Popconfirm, Tabs, Row, Col, Tag, TimePicker, Dropdown
+  App, Popconfirm, Tabs, Row, Col, Tag, TimePicker, Dropdown, Segmented
 } from 'antd'
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  FilterOutlined, CloseOutlined, SwapOutlined, RollbackOutlined, EllipsisOutlined
+  FilterOutlined, CloseOutlined, SwapOutlined, RollbackOutlined, EllipsisOutlined,
+  CameraOutlined, PictureOutlined, SendOutlined, ReloadOutlined
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
@@ -14,6 +15,8 @@ import { addRecord, updateRecord, deleteRecord, refundRecordThunk, fetchRecords 
 import { fetchAccounts } from '../store/slices/accountsSlice'
 import type { Record as RecordType } from '../../main/database/schema'
 import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_COLORS } from '../utils/constants'
+import { getApiKeyStatus, analyzeAccounting } from '../services/ai'
+import type { AccountItem, CategoryItem } from '../services/ai'
 
 const { Option } = Select
 const { TextArea } = Input
@@ -68,6 +71,19 @@ const Records: React.FC<RecordsProps> = ({
   const [refundTargetRecord, setRefundTargetRecord] = useState<RecordType | null>(null)
   const [refundForm] = Form.useForm()
 
+  // --- AI inline modes ---
+  const [aiMode, setAiMode] = useState<'text' | 'screenshot' | 'camera'>('text')
+  const [aiText, setAiText] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiImageBase64, setAiImageBase64] = useState<string | null>(null)
+  const [aiImagePreview, setAiImagePreview] = useState<string | null>(null)
+  const aiFileInputRef = useRef<HTMLInputElement>(null)
+  const [aiCameraStream, setAiCameraStream] = useState<MediaStream | null>(null)
+  const [aiPhotoBase64, setAiPhotoBase64] = useState<string | null>(null)
+  const [aiPhotoPreview, setAiPhotoPreview] = useState<string | null>(null)
+  const aiVideoRef = useRef<HTMLVideoElement>(null)
+  const aiCanvasRef = useRef<HTMLCanvasElement>(null)
+
   const getCategoryById = (id: number) => categories.find(c => c.id === id)
   const getAccountById = (id: number) => accounts.find(a => a.id === id)
 
@@ -95,6 +111,16 @@ const Records: React.FC<RecordsProps> = ({
       onFilterConsumed?.()
     }
   }, [initialFilterCategoryId])
+
+  // Cleanup AI camera on tab switch or modal close
+  useEffect(() => {
+    if (!isModalOpen || addModalTab !== 'ai') {
+      if (aiCameraStream) {
+        aiCameraStream.getTracks().forEach(t => t.stop())
+        setAiCameraStream(null)
+      }
+    }
+  }, [isModalOpen, addModalTab])
 
   const hasActiveFilters = filterCategory !== undefined || filterDateRange !== null || filterAccount !== undefined
 
@@ -167,6 +193,18 @@ const Records: React.FC<RecordsProps> = ({
     setRecordType('expense')
     setAddModalTab('manual')
     form.setFieldsValue({ date: dayjs(), time: dayjs(), type: 'expense' })
+    // Reset AI state
+    setAiMode('text')
+    setAiText('')
+    setAiLoading(false)
+    setAiImageBase64(null)
+    setAiImagePreview(null)
+    setAiPhotoBase64(null)
+    setAiPhotoPreview(null)
+    if (aiCameraStream) {
+      aiCameraStream.getTracks().forEach(t => t.stop())
+      setAiCameraStream(null)
+    }
     setIsModalOpen(true)
   }
 
@@ -229,6 +267,142 @@ const Records: React.FC<RecordsProps> = ({
       message.error('操作失败，请重试')
     }
   }
+
+  // ---- AI inline helpers ----
+
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        const base64 = result.split(',')[1] || result
+        resolve(base64)
+      }
+      reader.onerror = () => reject(new Error('文件读取失败'))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const handleAiSubmit = async (options: { text?: string; imageBase64?: string }) => {
+    const { text, imageBase64 } = options
+    if (!text && !imageBase64) {
+      message.error('请输入记账描述或上传图片')
+      return
+    }
+    if (getApiKeyStatus() === 'missing') {
+      message.error('请先在设置页配置智谱 API Key')
+      return
+    }
+    setAiLoading(true)
+    try {
+      const accountsForAI: AccountItem[] = accounts.map(a => ({
+        id: a.id, name: a.name, type: a.type,
+        cardNo: a.cardNo, bankName: a.bankName, holderName: a.holderName
+      }))
+      const categoriesForAI: CategoryItem[] = categories.map(c => ({
+        id: c.id!, name: c.name, type: c.type, icon: c.icon, color: c.color
+      }))
+      const recordInput = await analyzeAccounting({
+        text, imageBase64, accounts: accountsForAI, categories: categoriesForAI
+      })
+      await dispatch(addRecord({
+        amount: recordInput.amount,
+        type: recordInput.type,
+        categoryId: recordInput.categoryId ?? 0,
+        accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
+        ledgerId: currentLedgerId ?? undefined,
+        date: recordInput.time && recordInput.time !== '00:00:00'
+          ? `${recordInput.date} ${recordInput.time}`
+          : recordInput.date,
+        note: recordInput.note,
+        createdAt: new Date().toISOString()
+      })).unwrap()
+      const category = categories.find(c => c.id === recordInput.categoryId)
+      const account = accounts.find(a => a.id === recordInput.accountId)
+      message.success(`AI记账: ¥${recordInput.amount.toFixed(2)} · ${category?.name ?? '未分类'} - ${account?.name ?? '默认账户'}`)
+      setAiLoading(false)
+      setIsModalOpen(false)
+      dispatch(fetchRecords() as any)
+      dispatch(fetchAccounts() as any)
+    } catch (e) {
+      setAiLoading(false)
+      const errMsg = e instanceof Error ? e.message : String(e)
+      if (errMsg === 'NO_API_KEY') message.error('请先在设置页配置智谱 API Key')
+      else if (errMsg === 'AMOUNT_INVALID') message.error('未能识别有效金额，请重新描述')
+      else message.error('AI 识别失败，请重试')
+    }
+  }
+
+  const handleAiTextSubmit = () => {
+    if (!aiText.trim()) { message.error('请输入记账描述'); return }
+    handleAiSubmit({ text: aiText.trim() })
+  }
+
+  const handleAiScreenshotFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { message.error('请选择图片文件'); return }
+    if (file.size > 10 * 1024 * 1024) { message.error('图片大小不能超过 10MB'); return }
+    readFileAsBase64(file).then(b64 => {
+      setAiImageBase64(b64)
+      setAiImagePreview(URL.createObjectURL(file))
+    }).catch(() => message.error('图片读取失败'))
+    if (aiFileInputRef.current) aiFileInputRef.current.value = ''
+  }
+
+  const handleAiScreenshotSubmit = () => {
+    if (!aiImageBase64) { message.error('请先上传图片'); return }
+    handleAiSubmit({ imageBase64: aiImageBase64 })
+  }
+
+  const resetAiScreenshot = () => {
+    setAiImageBase64(null)
+    if (aiImagePreview) URL.revokeObjectURL(aiImagePreview)
+    setAiImagePreview(null)
+  }
+
+  const startAiCamera = async () => {
+    try {
+      if (aiCameraStream) {
+        aiCameraStream.getTracks().forEach(t => t.stop())
+        setAiCameraStream(null)
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+      })
+      setAiCameraStream(stream)
+      requestAnimationFrame(() => {
+        if (aiVideoRef.current) aiVideoRef.current.srcObject = stream
+      })
+    } catch { message.error('无法访问摄像头，请检查权限设置') }
+  }
+
+  const takeAiPhoto = () => {
+    const video = aiVideoRef.current
+    const canvas = aiCanvasRef.current
+    if (!video || !canvas) return
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0)
+    const jpegBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1]
+    setAiPhotoBase64(jpegBase64)
+    setAiPhotoPreview(canvas.toDataURL('image/jpeg', 0.9))
+  }
+
+  const handleAiCameraSubmit = () => {
+    if (!aiPhotoBase64) { message.error('请先拍照'); return }
+    handleAiSubmit({ imageBase64: aiPhotoBase64 })
+  }
+
+  const resetAiPhoto = () => {
+    setAiPhotoBase64(null)
+    if (aiPhotoPreview) URL.revokeObjectURL(aiPhotoPreview)
+    setAiPhotoPreview(null)
+  }
+
+  // ---- End AI helpers ----
 
   const handleRefund = (record: RecordType) => {
     setRefundTargetRecord(record)
@@ -643,15 +817,93 @@ const Records: React.FC<RecordsProps> = ({
             </Form>
           </Tabs.TabPane>
           <Tabs.TabPane tab="🤖 AI 记账" key="ai">
-            <div style={{ padding: '24px 0', textAlign: 'center' }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
-              <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>AI 智能记账</div>
-              <div style={{ color: '#999', fontSize: 13, marginBottom: 16 }}>
-                通过 AI 自动识别账单信息，快速完成记账
-              </div>
-              <Button type="primary" size="large" onClick={() => {
-                setIsModalOpen(false)
-              }}>前往使用</Button>
+            <div style={{ marginTop: 16 }}>
+              <Segmented
+                block
+                value={aiMode}
+                onChange={(v) => setAiMode(v as any)}
+                options={[
+                  { label: '💬 文字', value: 'text' },
+                  { label: '📷 截图', value: 'screenshot' },
+                  { label: '📸 拍照', value: 'camera' },
+                ]}
+                style={{ marginBottom: 16 }}
+              />
+              {aiMode === 'text' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <TextArea
+                    rows={4}
+                    placeholder="描述你的消费，例如：午餐买了一份黄焖鸡35元用微信支付"
+                    value={aiText}
+                    onChange={e => setAiText(e.target.value)}
+                    disabled={aiLoading}
+                  />
+                  <Button
+                    type="primary"
+                    icon={<SendOutlined />}
+                    onClick={handleAiTextSubmit}
+                    loading={aiLoading}
+                    block
+                  >
+                    AI 识别记账
+                  </Button>
+                </div>
+              )}
+              {aiMode === 'screenshot' && (
+                aiImagePreview && aiImageBase64 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                    <img src={aiImagePreview} alt="截图预览" style={{ maxWidth: '100%', maxHeight: 300, borderRadius: 8, objectFit: 'contain' }} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Button icon={<ReloadOutlined />} onClick={resetAiScreenshot} disabled={aiLoading}>重新选择</Button>
+                      <Button type="primary" icon={<SendOutlined />} onClick={handleAiScreenshotSubmit} loading={aiLoading}>AI 识别</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const file = e.dataTransfer.files?.[0]
+                      if (!file) return
+                      if (!file.type.startsWith('image/')) { message.error('请拖入图片文件'); return }
+                      if (file.size > 10 * 1024 * 1024) { message.error('图片大小不能超过 10MB'); return }
+                      readFileAsBase64(file).then(b64 => {
+                        setAiImageBase64(b64)
+                        setAiImagePreview(URL.createObjectURL(file))
+                      }).catch(() => message.error('图片读取失败'))
+                    }}
+                    style={{ border: '2px dashed #d9d9d9', borderRadius: 8, padding: '32px 20px', textAlign: 'center', cursor: 'pointer', background: 'rgba(0,0,0,0.02)' }}
+                    onClick={() => aiFileInputRef.current?.click()}
+                  >
+                    <PictureOutlined style={{ fontSize: 40, color: '#bfbfbf', marginBottom: 12 }} />
+                    <div style={{ fontSize: 14, color: '#8c8c8c' }}>点击上传或拖拽图片</div>
+                    <input ref={aiFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAiScreenshotFile} />
+                  </div>
+                )
+              )}
+              {aiMode === 'camera' && (
+                aiPhotoPreview && aiPhotoBase64 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                    <img src={aiPhotoPreview} alt="拍照预览" style={{ maxWidth: '100%', maxHeight: 300, borderRadius: 8, objectFit: 'contain' }} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Button icon={<ReloadOutlined />} onClick={resetAiPhoto} disabled={aiLoading}>重新拍摄</Button>
+                      <Button type="primary" icon={<SendOutlined />} onClick={handleAiCameraSubmit} loading={aiLoading}>AI 识别</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+                    <div style={{ width: '100%', maxWidth: 400, borderRadius: 8, overflow: 'hidden', background: '#000' }}>
+                      <video ref={aiVideoRef} autoPlay playsInline style={{ width: '100%', display: 'block' }} />
+                    </div>
+                    <canvas ref={aiCanvasRef} style={{ display: 'none' }} />
+                    {!aiCameraStream ? (
+                      <Button type="primary" icon={<CameraOutlined />} onClick={startAiCamera} size="large">打开摄像头</Button>
+                    ) : (
+                      <Button type="primary" icon={<CameraOutlined />} onClick={takeAiPhoto} size="large" disabled={aiLoading}>拍照</Button>
+                    )}
+                  </div>
+                )
+              )}
             </div>
           </Tabs.TabPane>
         </Tabs>
