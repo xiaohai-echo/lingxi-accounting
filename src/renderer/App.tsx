@@ -6,6 +6,7 @@ import {
   PieChartOutlined, SettingOutlined, LogoutOutlined, BookOutlined,
   MenuOutlined, SunOutlined, MoonOutlined, UserOutlined, FileTextOutlined
 } from '@ant-design/icons'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import type { RootState, AppDispatch } from './store'
 import { checkAuth, logoutUser } from './store/slices/userSlice'
 import { setCurrentLedger, fetchLedgers } from './store/slices/ledgersSlice'
@@ -334,6 +335,7 @@ export default function App() {
   return (
     <AntApp>
       <AppContent />
+      <SpeedInsights />
     </AntApp>
   )
 }
