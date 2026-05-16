@@ -753,6 +753,21 @@ const mockApi = {
     return Promise.resolve({ lastSyncAt, localDataSize })
   },
 
+
+	  getCurrentUser: (): Promise<User | null> => {
+	    try {
+	      const stored = localStorage.getItem('userId')
+	      if (stored) {
+	        const uid = parseInt(stored)
+	        const user = mockUsers.find(u => u.id === uid)
+	        if (user && user.id) {
+	          loadOrInitUserData(user.id)
+	          return Promise.resolve({ ...user })
+	        }
+	      }
+	    } catch {}
+	    return Promise.resolve(null)
+	  },
 	  login: async (username: string, password: string): Promise<User | null> => {
 	    const hashed = await hashPassword(password)
 	    const user = mockUsers.find(u => u.username === username && u.password === hashed)

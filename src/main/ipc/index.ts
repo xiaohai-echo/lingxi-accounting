@@ -8,7 +8,8 @@ import {
   verifyUser, addUser, updateUser,
   getLogs, addLog, clearLogs,
   transferBetweenAccounts, refundRecord,
-  exportData, importData, exportCSV, getLedgerStats, mergeLedger
+  exportData, importData, exportCSV, getLedgerStats, mergeLedger,
+  getUserById
 } from '../database'
 
 export function registerIpcHandlers() {
@@ -51,7 +52,16 @@ export function registerIpcHandlers() {
   ipcMain.handle('login', (_e, username: string, password: string) => verifyUser(username, password))
   ipcMain.handle('register', (_e, user) => addUser(user))
   ipcMain.handle('update-user', (_e, id, data) => { updateUser(id, data) })
-  ipcMain.handle('get-current-user', () => null)
+  ipcMain.handle('get-current-user', (_e, userId?: number) => {
+    if (userId) {
+      const user = getUserById(userId)
+      if (user) {
+        const { password: _, ...safe } = user as any
+        return safe
+      }
+    }
+    return null
+  })
 
   // Logs
   ipcMain.handle('get-logs', (_e, limit?: number) => getLogs(limit))

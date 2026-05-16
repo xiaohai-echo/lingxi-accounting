@@ -53,7 +53,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('register', { username, password, nickname }),
   updateUser: (id: number, data: Partial<User>): Promise<void> =>
     ipcRenderer.invoke('update-user', id, data),
-  getCurrentUser: (): Promise<User | null> => ipcRenderer.invoke('get-current-user'),
+  getCurrentUser: (): Promise<User | null> => {
+    const userId = localStorage.getItem('userId')
+    if (userId) return ipcRenderer.invoke('get-current-user', parseInt(userId))
+    return Promise.resolve(null)
+  },
 
   // Logs
   getLogs: (limit?: number): Promise<Log[]> => ipcRenderer.invoke('get-logs', limit),

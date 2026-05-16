@@ -813,6 +813,12 @@ export function getUserByUsername(username: string): User | null {
   return mapUserRow(result[0].values[0])
 }
 
+export function getUserById(id: number): User | null {
+  const result = execQueryResult('SELECT * FROM users WHERE id = ?', [id])
+  if (result.length === 0 || result[0].values.length === 0) return null
+  return mapUserRow(result[0].values[0])
+}
+
 export function verifyUser(username: string, password: string): { user: Omit<User, 'password'> | null; error?: string } {
   const user = getUserByUsername(username)
   if (!user) return { user: null, error: '用户名或密码错误' }
