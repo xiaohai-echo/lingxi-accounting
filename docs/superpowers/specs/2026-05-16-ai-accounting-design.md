@@ -54,12 +54,15 @@ AI 从输入中提取结构化数据，**不直接指定最终类别**，而是�
   "type": "expense",
   "description": "午餐 - 公司楼下食堂",
   "date": "2026-05-16",
-  "paymentMethod": "现金"
+  "paymentMethod": "现金",
+  "cardLast4": null
 }
 ```
 
+- `cardLast4`：银行卡消费/转账/提现时，识别卡号后四位（如「招商5678」→ `"5678"`），无则为 null
+
 - 文本模式：prompt 要求 GLM-4-Flash 返回上述 JSON
-- 图片模式：prompt 要求 GLM-4V-Flash 识别图片中的金额、商户名、日期，返回同样 JSON
+- 图片模式：prompt 要求 GLM-4V-Flash 识别图片中的金额、商户名、日期、银行卡尾号，返回同样 JSON
 - 语音模式：GLM-4-Voice 将录音 base64 转文字后再走文本流程
 
 ### 第二步：匹配类别和账户
@@ -97,9 +100,20 @@ AI 从输入中提取结构化数据，**不直接指定最终类别**，而是�
 
 #### 2c. 账户识别
 
-- 根据 `paymentMethod` 匹配现有账户（「现金」→现金账户，「微信」→微信，「支付宝」→支付宝）
-- 匹配不到 → 使用当前账本默认账户
-- 收入默认记入第一个资产类账户
+匹配优先级：
+
+1. **卡号尾号精确匹配**：如果 `cardLast4` 不为 null，在账户列表中查找 `cardNo` 结尾匹配的银行卡账户。精确匹配到唯一账户后直接使用，跳过后续步骤。
+
+2. **支付方式模糊匹配**：根据 `paymentMethod` 匹配账户名（「现金」→现金账户，「微信」→微信，「支付宝」→支付宝）
+
+3. **默认回退**：匹配不到 → 当前账本默认账户；收入 → 第一个资产类账户
+
+```
+示例：「用招商5678消费了200元买书」
+  → cardLast4: "5678"
+  → 账户匹配：遍历账户，cardNo 以 "5678" 结尾 → 招商银行(****5678)
+  → 精准命中 ✅
+```
 
 #### 2d. 写入记录
 
@@ -122,10 +136,10 @@ mockApi.addRecord(record)
 ```typescript
 // 核心方法
 analyzeAccounting(input: { text?: string; imageBase64?: string }): Promise<RecordInput>
-  ├─ step1_extract(text?, imageBase64?) → { amount, type, description, date, paymentMethod }
+  ├─ step1_extract(text?, imageBase64?) → { amount, type, description, date, paymentMethod, cardLast4 }
   ├─ step2_matchStoreMapping(description) → categoryId | null (查自定义映射)
   ├─ step3_aiMatchCategory(description, type, categories[]) → categoryId
-  └─ step4_matchAccount(paymentMethod, type) → accountId
+  └─ step4_matchAccount(paymentMethod, cardLast4, accounts[], type) → accountId
   └─ return { amount, type, categoryId, accountId, date, description }
 ```
 
