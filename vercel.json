@@ -1,8 +1,9 @@
 {
   "buildCommand": "npm run build:vite",
   "outputDirectory": "dist/renderer",
+  "installCommand": "npm install --legacy-peer-deps",
   "framework": null,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }
