@@ -14,6 +14,9 @@ export interface ExtractedInfo {
   transferType?: 'transfer' | 'withdraw' | 'recharge'
   targetPaymentMethod?: string
   targetCardLast4?: string | null
+  accountId?: number | null
+  categoryId?: number | null
+  targetAccountId?: number | null
 }
 
 export interface RecordInput {
@@ -225,7 +228,7 @@ export function parseExtracted(raw: string): ExtractedInfo {
   // Validate time format HH:mm:ss, fallback to current time
   let time = String(obj.time || '')
   const timePattern = /^\d{2}:\d{2}(:\d{2})?$/
-  if (!timePattern.test(time)) {
+  if (!timePattern.test(time) || time === '00:00:00' || time === '00:00') {
     const now = new Date()
     const hh = String(now.getHours()).padStart(2, '0')
     const mm = String(now.getMinutes()).padStart(2, '0')
@@ -245,6 +248,10 @@ export function parseExtracted(raw: string): ExtractedInfo {
   const targetPaymentMethod = obj.targetPaymentMethod ? String(obj.targetPaymentMethod) : undefined
   const targetCardLast4 = obj.targetCardLast4 && obj.targetCardLast4 !== null ? String(obj.targetCardLast4) : null
 
+  const accountId = obj.accountId != null ? Number(obj.accountId) : null
+  const categoryId = obj.categoryId != null ? Number(obj.categoryId) : null
+  const targetAccountId = obj.targetAccountId != null ? Number(obj.targetAccountId) : null
+
   return {
     amount,
     type,
@@ -255,31 +262,63 @@ export function parseExtracted(raw: string): ExtractedInfo {
     cardLast4: cardLast4 && cardLast4.length > 0 ? cardLast4 : null,
     transferType,
     targetPaymentMethod,
-    targetCardLast4: targetCardLast4 && targetCardLast4.length > 0 ? targetCardLast4 : null
+    targetCardLast4: targetCardLast4 && targetCardLast4.length > 0 ? targetCardLast4 : null,
+    accountId: accountId && !isNaN(accountId) && accountId > 0 ? accountId : null,
+    categoryId: categoryId && !isNaN(categoryId) && categoryId > 0 ? categoryId : null,
+    targetAccountId: targetAccountId && !isNaN(targetAccountId) && targetAccountId > 0 ? targetAccountId : null
   }
 }
 
 // ==================== Prompt Builders ====================
 
-function buildExtractionPrompt(text: string): string {
+function buildExtractionPrompt(text: string, accounts?: AccountItem[], categories?: CategoryItem[]): string {
+  const accountSection = accounts && accounts.length > 0
+    ? `\n\n用户账户列表：\n${accounts.map(a => {
+        const parts = [`ID:${a.id} - ${a.name}(${a.type})`]
+        if (a.bankName) parts.push(`银行:${a.bankName}`)
+        if (a.cardNo) parts.push(`尾号:${a.cardNo.slice(-4)}`)
+        return parts.join(' ')
+      }).join('\n')}\n请根据用户描述的支付方式，从以上账户列表中选择最匹配的账户，返回其 ID 作为 accountId。如用户提到"信用卡"则匹配 type 为 credit 的账户，"储蓄卡/银行卡"匹配 type 为 bank 的账户，"微信"匹配 wechat，"支付宝"匹配 alipay，"现金"匹配 cash。如为转账，还需返回 targetAccountId。`
+    : ''
+
+  const categorySection = categories && categories.length > 0
+    ? `\n\n用户分类列表：\n${categories.map(c => `ID:${c.id} - ${c.name}(${c.type === 'income' ? '收入' : '支出'})`).join('\n')}\n请根据消费描述，从以上分类列表中选择最匹配的分类，返回其 ID 作为 categoryId。注意 type 为 expense 时只能选支出分类，type 为 income 时只能选收入分类。`
+    : ''
+
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const weekdayNames = ['日', '一', '二', '三', '四', '五', '六']
+  const todayWeekday = `星期${weekdayNames[now.getDay()]}`
+
   return `从以下用户输入中提取记账信息，返回纯 JSON 格式（不要 markdown 代码块）：
 {
   "amount": 数字（大于0）,
   "type": "income"、"expense" 或 "transfer",
-  "description": "简短描述消费内容或转账说明",
+  "description": "核心消费品或服务名称，只保留最精简的关键词，去除支付方式、金额、数量等无关信息。例如：'午餐买了一杯古茗奶茶，用信用卡支付12元' → '古茗奶茶'，'打车去公司花了25块' → '打车'，'超市买了水果和蔬菜' → '水果蔬菜'",
   "date": "YYYY-MM-DD 格式",
-  "time": "HH:mm:ss 格式，如无提及则用00:00:00",
+  "time": "HH:mm:ss 格式，如用户未提及具体时间则为null",
   "paymentMethod": "支付来源（如：微信、支付宝、现金、银行卡、花呗、零钱等，可选）",
   "cardLast4": "银行卡后四位（如无则为null）",
   "transferType": "如type为transfer，标记为transfer/withdraw/recharge，否则为null",
   "targetPaymentMethod": "转账/提现的目标账户描述（如：银行卡、微信零钱等，可选）",
-  "targetCardLast4": "目标银行卡后四位（如无则为null）"
+  "targetCardLast4": "目标银行卡后四位（如无则为null）",
+  "accountId": 从账户列表匹配的账户ID（如无法匹配则为null）,
+  "categoryId": 从分类列表匹配的分类ID（如无法匹配则为null）,
+  "targetAccountId": 转账目标账户ID（如非转账则为null）
 }
 
 识别规则：
 - 提现：从微信/支付宝/银行卡提到银行卡 → type: "transfer", transferType: "withdraw"
 - 充值：从银行卡转到微信/支付宝 → type: "transfer", transferType: "recharge"
 - 转账：账户间互转 → type: "transfer", transferType: "transfer"
+- accountId 和 categoryId 必须从提供的列表中选择，不要编造不存在的 ID
+
+日期识别规则（今天是 ${todayStr} ${todayWeekday}）：
+- 未提及日期：date 为今天 ${todayStr}
+- 相对日期：今天→${todayStr}，昨天→往前推1天，前天→往前推2天，大前天→往前推3天，以此类推
+- 星期X：计算今天及之前最近的那个星期X的日期。例如今天是${todayWeekday}，若用户说"星期一"则找今天或之前最近的星期一
+- 上周星期X：从上周一往前推算对应星期
+- 具体日期：如"5月18日"或"2025-05-18"，直接转换为 YYYY-MM-DD 格式${accountSection}${categorySection}
 
 用户输入：${text}`
 }
@@ -307,25 +346,24 @@ ${categoryList}
 
 // ==================== Text Extraction ====================
 
-export async function extractFromText(text: string): Promise<ExtractedInfo> {
+export async function extractFromText(text: string, accounts?: AccountItem[], categories?: CategoryItem[]): Promise<ExtractedInfo> {
   const content = await callZhipu('glm-4-flash', [
     { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
-    { role: 'user', content: buildExtractionPrompt(text) }
+    { role: 'user', content: buildExtractionPrompt(text, accounts, categories) }
   ])
   return parseExtracted(content)
 }
 
 // ==================== Image Extraction ====================
 
-export async function extractFromImage(base64: string): Promise<ExtractedInfo> {
-  // Ensure base64 has proper data URI prefix
+export async function extractFromImage(base64: string, accounts?: AccountItem[], categories?: CategoryItem[]): Promise<ExtractedInfo> {
   const imageUrl = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`
 
   const content = await callZhipu('glm-4v-flash', [
     {
       role: 'user',
       content: [
-        { type: 'text', text: buildExtractionPrompt('请从这张图片中提取记账信息。') },
+        { type: 'text', text: buildExtractionPrompt('请从这张图片中提取记账信息。', accounts, categories) },
         { type: 'image_url', image_url: { url: imageUrl } }
       ]
     }
@@ -336,19 +374,33 @@ export async function extractFromImage(base64: string): Promise<ExtractedInfo> {
 // ==================== Voice Transcription ====================
 
 export async function transcribeVoice(audioBase64: string, mimeType?: string): Promise<string> {
-  const mime = mimeType || 'audio/webm'
-  const audioUrl = audioBase64.startsWith('data:') ? audioBase64 : `data:${mime};base64,${audioBase64}`
+  const apiKey = getApiKey()
+  if (!apiKey) throw new Error('API_KEY_MISSING')
 
-  const content = await callZhipu('glm-4-voice', [
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: '请将这段音频转写为文字，只返回转写结果，不要添加任何解释。' },
-        { type: 'audio_url', audio_url: { url: audioUrl } }
-      ]
-    }
-  ]).catch(() => '')
-  return content.trim()
+  let base64Data = audioBase64
+  if (audioBase64.startsWith('data:')) {
+    const commaIdx = audioBase64.indexOf(',')
+    if (commaIdx !== -1) base64Data = audioBase64.substring(commaIdx + 1)
+  }
+
+  const formData = new FormData()
+  formData.append('model', 'glm-asr-2512')
+  formData.append('file_base64', base64Data)
+  formData.append('stream', 'false')
+
+  const response = await fetch('https://open.bigmodel.cn/api/paas/v4/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: formData
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '')
+    throw new Error(`ASR_ERROR: ${response.status} ${errorText}`)
+  }
+
+  const data = await response.json()
+  return (data.text || '').trim()
 }
 
 // ==================== Store Mapping Match ====================
@@ -456,12 +508,19 @@ export function matchAccount(
       const cash = accounts.find(a => a.type === 'cash')
       if (cash) return cash
     }
-    if (method.includes('银行') || method.includes('卡') || method.includes('bank') || method.includes('card')) {
-      // Prefer bank over credit for most cases
-      const bank = accounts.find(a => a.type === 'bank')
-      if (bank) return bank
+    if (method.includes('信用卡') || method.includes('credit card')) {
       const credit = accounts.find(a => a.type === 'credit')
       if (credit) return credit
+    }
+    if (method.includes('储蓄卡') || method.includes('借记卡') || method.includes('debit')) {
+      const bank = accounts.find(a => a.type === 'bank')
+      if (bank) return bank
+    }
+    if (method.includes('银行') || method.includes('卡') || method.includes('bank') || method.includes('card')) {
+      const credit = accounts.find(a => a.type === 'credit')
+      if (credit) return credit
+      const bank = accounts.find(a => a.type === 'bank')
+      if (bank) return bank
     }
   }
 
@@ -488,49 +547,61 @@ export async function analyzeAccounting(options: {
   accounts: AccountItem[]
   categories: CategoryItem[]
 }): Promise<RecordInput> {
-  // Step 1: Extract accounting info from text or image
   let extracted: ExtractedInfo
 
   if (options.text) {
-    extracted = await extractFromText(options.text)
+    extracted = await extractFromText(options.text, options.accounts, options.categories)
   } else if (options.imageBase64) {
-    extracted = await extractFromImage(options.imageBase64)
+    extracted = await extractFromImage(options.imageBase64, options.accounts, options.categories)
   } else {
     throw new Error('请提供文本或图片输入')
   }
 
   const { amount, type, description, date, time, paymentMethod, cardLast4, transferType, targetPaymentMethod, targetCardLast4 } = extracted
 
-  // Step 2: Try store mapping match first (local, no API call)
   let categoryId: number | undefined
   if (type !== 'transfer') {
-    const storeMatch = matchStoreMapping(description)
-    if (storeMatch !== null) {
-      categoryId = storeMatch
+    if (extracted.categoryId != null) {
+      const found = options.categories.find(c => c.id === extracted.categoryId && c.type === type)
+      if (found) categoryId = extracted.categoryId
+    }
+    if (categoryId === undefined) {
+      const storeMatch = matchStoreMapping(description)
+      if (storeMatch !== null) categoryId = storeMatch
+    }
+    if (categoryId === undefined) {
+      const aiMatch = await aiMatchCategory(description, type, options.categories)
+      if (aiMatch !== null) categoryId = aiMatch
     }
   }
 
-  // Step 3: AI match category (only if no store mapping found, and not transfer)
-  if (categoryId === undefined && type !== 'transfer') {
-    const aiMatch = await aiMatchCategory(description, type, options.categories)
-    if (aiMatch !== null) {
-      categoryId = aiMatch
-    }
+  let accountId: number | undefined
+  if (extracted.accountId != null) {
+    const found = options.accounts.find(a => a.id === extracted.accountId)
+    if (found) accountId = extracted.accountId
+  }
+  if (accountId === undefined) {
+    const account = matchAccount(paymentMethod, cardLast4, options.accounts, type)
+    accountId = account?.id
   }
 
-  // Step 4: Match accounts
-  const account = matchAccount(paymentMethod, cardLast4, options.accounts, type)
   let targetAccountId: number | undefined
   if (type === 'transfer') {
-    const targetAccount = matchAccount(targetPaymentMethod, targetCardLast4, options.accounts, 'expense')
-    targetAccountId = targetAccount?.id
+    if (extracted.targetAccountId != null) {
+      const found = options.accounts.find(a => a.id === extracted.targetAccountId)
+      if (found) targetAccountId = extracted.targetAccountId
+    }
+    if (targetAccountId === undefined) {
+      const targetAccount = matchAccount(targetPaymentMethod, targetCardLast4, options.accounts, 'expense')
+      targetAccountId = targetAccount?.id
+    }
   }
 
   return {
     amount,
     type,
     categoryId,
-    accountId: account?.id,
+    accountId,
     targetAccountId,
     date,
     time,
