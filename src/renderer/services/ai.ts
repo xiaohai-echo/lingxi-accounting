@@ -70,7 +70,7 @@ interface ZhipuMessage {
 const ZHIPU_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4'
 const ZHIPU_ENDPOINT = '/chat/completions'
 
-const EXTRACTION_SYSTEM_PROMPT = '你是消费记账提取助手。从用户输入中提取记账信息，返回纯 JSON。'
+const EXTRACTION_SYSTEM_PROMPT = '你是灵析记账提取助手。从用户输入中提取记账信息，返回纯 JSON。'
 const CATEGORY_SYSTEM_PROMPT = '你是记账分类助手。根据消费描述选择最合适的分类。'
 
 // ==================== Key & Config Helpers ====================

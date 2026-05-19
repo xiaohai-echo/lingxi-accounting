@@ -11,10 +11,13 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-redux', '@reduxjs/toolkit'],
-          'vendor-antd': ['antd', '@ant-design/icons'],
-          'vendor-chart': ['recharts'],
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('antd') || id.includes('@ant-design')) return 'vendor-antd'
+            if (id.includes('recharts')) return 'vendor-chart'
+            if (id.includes('react-dom') || id.includes('react/')) return 'vendor-react'
+            if (id.includes('react-redux') || id.includes('@reduxjs') || id.includes('redux')) return 'vendor-react'
+          }
         }
       }
     },
