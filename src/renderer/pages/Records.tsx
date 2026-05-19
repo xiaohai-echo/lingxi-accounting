@@ -312,11 +312,11 @@ const Records: React.FC<RecordsProps> = ({
         categoryId: recordInput.categoryId ?? 0,
         accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
         ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
-        date: recordInput.time && recordInput.time !== '00:00:00'
-          ? `${recordInput.date} ${recordInput.time}`
-          : recordInput.date,
+        date: recordInput.date,
         note: `🤖 ${recordInput.note}`,
-        createdAt: new Date().toISOString()
+        createdAt: recordInput.time
+          ? `${recordInput.date}T${recordInput.time}`
+          : new Date().toISOString()
       })).unwrap()
       getApi().addLog("ai_record", `AI记账: ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categories.find(c => c.id === recordInput.categoryId)?.name} | ${accounts.find(a => a.id === recordInput.accountId)?.name}`)
       const category = categories.find(c => c.id === recordInput.categoryId)
@@ -458,8 +458,9 @@ const Records: React.FC<RecordsProps> = ({
   const groupedRecords = useMemo(() => {
     const groups: Record<string, RecordType[]> = {}
     filteredRecords.forEach(record => {
-      if (!groups[record.date]) groups[record.date] = []
-      groups[record.date].push(record)
+      const dateKey = record.date.substring(0, 10)
+      if (!groups[dateKey]) groups[dateKey] = []
+      groups[dateKey].push(record)
     })
     return Object.entries(groups).sort((a, b) => dayjs(b[0]).valueOf() - dayjs(a[0]).valueOf())
   }, [filteredRecords])

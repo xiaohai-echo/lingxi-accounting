@@ -6,6 +6,7 @@ import {
   PieChartOutlined, SettingOutlined, LogoutOutlined, BookOutlined,
   MenuOutlined, SunOutlined, MoonOutlined, UserOutlined, FileTextOutlined
 } from '@ant-design/icons'
+import { getMonthlyBudgetOverages } from './utils/budgetNotifications'
 import type { RootState, AppDispatch } from './store'
 import { checkAuth, logoutUser } from './store/slices/userSlice'
 import { setCurrentLedger, fetchLedgers } from './store/slices/ledgersSlice'
@@ -24,6 +25,7 @@ const Budgets = lazy(() => import('./pages/Budgets'))
 const Settings = lazy(() => import('./pages/Settings'))
 const LedgerManage = lazy(() => import('./pages/LedgerManage'))
 const Logs = lazy(() => import('./pages/Logs'))
+const AIFloatingBall = lazy(() => import('./components/AIFloatingBall'))
 
 const { Header, Sider, Content } = Layout
 
@@ -50,6 +52,9 @@ function AppContent() {
   const dispatch = useDispatch<AppDispatch>()
   const { currentUser, isLoggedIn } = useSelector((state: RootState) => state.user)
   const { currentLedgerId, items: ledgers } = useSelector((state: RootState) => state.ledgers)
+  const { items: records } = useSelector((state: RootState) => state.records)
+  const { items: budgets } = useSelector((state: RootState) => state.budgets)
+  const { items: categories } = useSelector((state: RootState) => state.categories)
 
   const [collapsed, setCollapsed] = useState(false)
   const [isDark, setIsDark] = useState(() => {
@@ -63,6 +68,7 @@ function AppContent() {
   const [autoOpenRecordsAdd, setAutoOpenRecordsAdd] = useState(false)
   const [recordFilterAccountId, setRecordFilterAccountId] = useState<number | null>(null)
   const [recordFilterCategoryId, setRecordFilterCategoryId] = useState<number | null>(null)
+  const [floatingBallVisible, setFloatingBallVisible] = useState(() => localStorage.getItem('ai_floating_ball') !== 'false')
 
   const onToggleTheme = useCallback(() => {
     setIsDark(prev => {
@@ -76,6 +82,13 @@ function AppContent() {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    const check = () => setFloatingBallVisible(localStorage.getItem('ai_floating_ball') !== 'false')
+    window.addEventListener('storage', check)
+    const interval = setInterval(check, 1000)
+    return () => { window.removeEventListener('storage', check); clearInterval(interval) }
   }, [])
 
   const loadLedgerData = useCallback((ledgerId: number) => {
@@ -137,12 +150,76 @@ function AppContent() {
     setMobileNavKey('2')
   }
 
-  const { message: msgApi } = AntApp.useApp()
+  const { message: msgApi, notification: notificationApi } = AntApp.useApp()
 
   const handleLogout = () => {
     dispatch(logoutUser() as any)
     msgApi.success('已退出登录')
   }
+
+  useEffect(() => {
+    if (!isLoggedIn || !currentLedgerId) return
+    if (!notificationApi) return
+
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth() + 1
+
+    const overages = getMonthlyBudgetOverages(records, budgets, year, month)
+
+    const storageKey = `budget_over_notified:${currentLedgerId}:${year}:${month}`
+    const raw = localStorage.getItem(storageKey)
+    const notified: string[] = raw ? (() => { try { return JSON.parse(raw) } catch { return [] } })() : []
+    const notifiedSet = new Set(notified)
+
+    const overKeys = new Set(overages.map(o => `${o.budget.categoryId}:${o.budget.period}:${o.budget.year}:${o.budget.month ?? 'all'}`))
+    const cleaned = notified.filter(k => overKeys.has(k))
+    if (cleaned.length !== notified.length) {
+      localStorage.setItem(storageKey, JSON.stringify(cleaned))
+    }
+
+    const toNotify = overages
+      .map(o => ({ ...o, key: `${o.budget.categoryId}:${o.budget.period}:${o.budget.year}:${o.budget.month ?? 'all'}` }))
+      .filter(o => !notifiedSet.has(o.key))
+      .slice(0, 3)
+
+    if (toNotify.length === 0) return
+
+    const nextNotified = [...cleaned]
+    for (const item of toNotify) {
+      const categoryName = categories.find(c => c.id === item.budget.categoryId)?.name || '未知分类'
+      const budgetAmount = item.budget.amount
+      const spentAmount = item.spent
+      const overAmount = spentAmount - budgetAmount
+      const notifKey = `budget-over:${storageKey}:${item.key}`
+
+      notificationApi.warning({
+        key: notifKey,
+        message: '预算超支提醒',
+        description: `本月「${categoryName}」已支出 ¥${spentAmount.toFixed(2)} / 预算 ¥${budgetAmount.toFixed(2)}，超支 ¥${overAmount.toFixed(2)}`,
+        duration: 6,
+        btn: (
+          <Button size="small" type="primary" onClick={() => handleViewCategoryRecords(item.budget.categoryId)}>
+            查看记录
+          </Button>
+        )
+      })
+
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          try {
+            new Notification('预算超支提醒', {
+              body: `本月「${categoryName}」已超支 ¥${overAmount.toFixed(2)}`
+            })
+          } catch {
+          }
+        }
+      }
+
+      nextNotified.push(item.key)
+    }
+    localStorage.setItem(storageKey, JSON.stringify(nextNotified))
+  }, [isLoggedIn, currentLedgerId, records, budgets, categories, notificationApi])
 
   const userMenuItems = [
     { key: 'profile', icon: <UserOutlined />, label: currentUser?.nickname || currentUser?.username },
@@ -158,8 +235,8 @@ function AppContent() {
           token: { colorPrimary: '#667eea' }
         }}
       >
-        <Login />
-      </ConfigProvider>
+          <Login />
+        </ConfigProvider>
     )
   }
 
@@ -184,7 +261,7 @@ function AppContent() {
         token: { colorPrimary: '#667eea' }
       }}
     >
-      <Layout style={{ minHeight: '100vh' }} data-theme={isDark ? 'dark' : 'light'}>
+      <Layout style={{ minHeight: '100vh', ...(isMobile ? { paddingBottom: 52 } : {}) }} data-theme={isDark ? 'dark' : 'light'}>
         {!isMobile && (
           <Sider
             collapsible
@@ -269,8 +346,7 @@ function AppContent() {
           <Content style={{
             padding: isMobile ? 12 : 24,
             overflow: 'auto',
-            height: `calc(100vh - 56px${isMobile ? ' - 52px' : ''})`,
-            paddingBottom: isMobile ? 56 : 0
+            paddingBottom: isMobile ? 12 : 0
           }}>
             <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}><Spin size="large" /></div>}>
               {renderContent()}
@@ -326,6 +402,10 @@ function AppContent() {
           </Drawer>
         </>
       )}
+
+      <Suspense fallback={null}>
+        {floatingBallVisible && <AIFloatingBall />}
+      </Suspense>
     </ConfigProvider>
   )
 }
