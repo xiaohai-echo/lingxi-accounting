@@ -68,6 +68,7 @@ export default function Settings({ isDark, onToggleTheme }: { isDark: boolean; o
   const [dataLoading, setDataLoading] = useState(false)
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('zhipu_api_key') || '')
   const [showKey, setShowKey] = useState(false)
+  const [floatingBallEnabled, setFloatingBallEnabled] = useState(() => localStorage.getItem('ai_floating_ball') !== 'false')
   const [storeMappings, setStoreMappings] = useState<Array<{ storeName: string; categoryId: number }>>(() => {
     const userId = localStorage.getItem('userId') || '0'
     try { return JSON.parse(localStorage.getItem(`store_mappings_${userId}`) || '[]') } catch { return [] }
@@ -395,6 +396,22 @@ export default function Settings({ isDark, onToggleTheme }: { isDark: boolean; o
       {/* AI Smart Accounting */}
       <Card style={{ marginBottom: 24 }}>
         <Title level={5} style={{ marginBottom: 16 }}>🤖 AI 智能记账</Title>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <Text strong>AI 记账悬浮球</Text>
+            <div><Text type="secondary" style={{ fontSize: 12 }}>在页面显示可拖拽的 AI 快捷入口</Text></div>
+          </div>
+          <Switch
+            checked={floatingBallEnabled}
+            onChange={(checked) => {
+              setFloatingBallEnabled(checked)
+              localStorage.setItem('ai_floating_ball', checked ? 'true' : 'false')
+            }}
+          />
+        </div>
+
+        <Divider />
 
         {/* API Key Section */}
         <div style={{ marginBottom: 16 }}>
