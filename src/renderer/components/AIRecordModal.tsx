@@ -1,21 +1,25 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { useSelector } from 'react-redux'
+import { useSelector, useDispatch } from 'react-redux'
 import { Modal, Input, Button, Spin, Typography, App } from 'antd'
 import {
   AudioOutlined,
   CameraOutlined,
   PictureOutlined,
   SendOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined
 } from '@ant-design/icons'
-import type { RootState } from '../store'
+import type { RootState, AppDispatch } from '../store'
 import { getApi } from '../api/mock'
 import {
   getApiKeyStatus,
   analyzeAccounting,
   transcribeVoice
 } from '../services/ai'
-import type { AccountItem, CategoryItem } from '../services/ai'
+import type { AccountItem, CategoryItem, RecordInput } from '../services/ai'
+import { fetchRecords } from '../store/slices/recordsSlice'
+import { fetchAccounts } from '../store/slices/accountsSlice'
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -64,38 +68,43 @@ function handleError(e: Error, msg: { error: (content: string) => void }): void 
   }
 }
 
-// ==================== Undo Notification ====================
+// ==================== Notifications ====================
 
-function showUndoNotification(
-  recordId: number,
-  amount: number,
+function showSuccessNotification(
+  recordInput: RecordInput,
   categoryName: string,
   accountName: string,
-  notification: any,
-  onSuccess: () => void
+  notification: any
 ): void {
-  const key = `ai-record-${Date.now()}`
+  const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
+  const typeColor = recordInput.type === 'income' ? '#52c41a' : recordInput.type === 'transfer' ? '#667eea' : '#ff4d4f'
   notification.success({
-    message: `AI记账: ¥${amount.toFixed(2)} · ${categoryName} - ${accountName}`,
+    message: 'AI 记账成功',
+    description: (
+      <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+        <div><span style={{ color: typeColor, fontWeight: 600 }}>{typeLabel}</span> ¥{recordInput.amount.toFixed(2)}</div>
+        <div>消费内容：{recordInput.note}</div>
+        <div>付款账户：{accountName}</div>
+        <div>消费类别：{categoryName}</div>
+        <div style={{ color: '#8c8c8c', fontSize: 12 }}>🤖 AI记账备注：{recordInput.note}</div>
+      </div>
+    ),
+    icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
     duration: 5,
-    key,
-    btn: (
-      <Button
-        danger
-        size="small"
-        onClick={async () => {
-          try {
-            await getApi().deleteRecord(recordId)
-            notification.destroy(key)
-            onSuccess()
-          } catch {
-            // Silent fail on undo error
-          }
-        }}
-      >
-        撤销
-      </Button>
-    )
+    placement: 'topRight'
+  })
+}
+
+function showFailureNotification(
+  errorMessage: string,
+  notification: any
+): void {
+  notification.error({
+    message: 'AI 记账失败',
+    description: errorMessage,
+    icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
+    duration: 4,
+    placement: 'topRight'
   })
 }
 
@@ -127,8 +136,8 @@ function stopMediaStream(stream: MediaStream | null): void {
 
 const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSuccess }) => {
   const { message, notification } = App.useApp()
+  const dispatch = useDispatch<AppDispatch>()
 
-  // Redux state
   const accounts = useSelector((state: RootState) => state.accounts.items)
   const categories = useSelector((state: RootState) => state.categories.items)
   const currentLedgerId = useSelector((state: RootState) => state.ledgers.currentLedgerId)
@@ -217,7 +226,6 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
         return
       }
 
-      // Check API key
       if (getApiKeyStatus() === 'missing') {
         message.error('请先在设置页配置智谱 API Key')
         return
@@ -253,22 +261,22 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
         setLoadingText('正在写入…')
 
-        const recordId = await getApi().addRecord({
+        await getApi().addRecord({
           amount: recordInput.amount,
           type: recordInput.type,
           categoryId: recordInput.categoryId ?? 0,
           accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
           ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
-          date: recordInput.time && recordInput.time !== '00:00:00'
-            ? `${recordInput.date} ${recordInput.time}`
-            : recordInput.date,
-          note: `🤖 ${recordInput.note}`
+          date: recordInput.date,
+          note: `🤖 ${recordInput.note}`,
+          createdAt: recordInput.time
+            ? `${recordInput.date}T${recordInput.time}`
+            : new Date().toISOString()
         })
 
         setLoading(false)
         setLoadingText('')
 
-        // Determine display names for notification
         const category = categories.find((c) => c.id === recordInput.categoryId)
         const account = accounts.find((a) => a.id === recordInput.accountId)
         const categoryName = category?.name ?? '未分类'
@@ -276,17 +284,20 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
         const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
 
-
         getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
 
+        dispatch(fetchRecords(currentLedgerId as any))
+        dispatch(fetchAccounts(currentLedgerId as any))
 
-        showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
+        showSuccessNotification(recordInput, categoryName, accountName, notification)
         onClose()
         onSuccess()
       } catch (e) {
         setLoading(false)
         setLoadingText('')
-        handleError(e instanceof Error ? e : new Error(String(e)), message)
+        const err = e instanceof Error ? e : new Error(String(e))
+        handleError(err, message)
+        showFailureNotification(err.message, notification)
       }
     },
     [accounts, categories, currentLedgerId, message, notification, onClose, onSuccess]
@@ -597,15 +608,16 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
               text: speechText, accounts: accountsForAI, categories: categoriesForAI
             })
             setLoadingText('正在写入…')
-            const recordId = await getApi().addRecord({
+            await getApi().addRecord({
               amount: recordInput.amount, type: recordInput.type,
               categoryId: recordInput.categoryId ?? 0,
               accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
               ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
-              date: recordInput.time && recordInput.time !== '00:00:00'
-                ? `${recordInput.date} ${recordInput.time}`
-                : recordInput.date,
-              note: `🤖 ${recordInput.note}`
+              date: recordInput.date,
+              note: `🤖 ${recordInput.note}`,
+              createdAt: recordInput.time
+                ? `${recordInput.date}T${recordInput.time}`
+                : new Date().toISOString()
             })
             setLoading(false)
             setLoadingText('')
@@ -617,7 +629,10 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
             getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
 
-            showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
+            dispatch(fetchRecords(currentLedgerId as any))
+            dispatch(fetchAccounts(currentLedgerId as any))
+
+            showSuccessNotification(recordInput, categoryName, accountName, notification)
             onClose()
             onSuccess()
             return
@@ -625,7 +640,9 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
             setLoading(false)
             setLoadingText('')
             const err = e instanceof Error ? e : new Error(String(e))
-            handleError(new Error(err.message === 'API_ERROR' ? 'VOICE_ERROR' : err.message), message)
+            const mappedMsg = err.message === 'API_ERROR' ? 'VOICE_ERROR' : err.message
+            handleError(new Error(mappedMsg), message)
+            showFailureNotification(mappedMsg, notification)
             return
           }
         }
@@ -643,11 +660,9 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
           setLoadingText('AI 正在识别…')
 
           try {
-            // Step 1: Transcribe voice to text
             const transcription = await transcribeVoice(base64, mimeType)
             if (!transcription.trim()) throw new Error("VOICE_ERROR")
 
-            // Step 2: Analyze accounting from transcribed text
             const accountsForAI: AccountItem[] = accounts.map((a) => ({
               id: a.id,
               name: a.name,
@@ -673,16 +688,17 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
             setLoadingText('正在写入…')
 
-            const recordId = await getApi().addRecord({
+            await getApi().addRecord({
               amount: recordInput.amount,
               type: recordInput.type,
               categoryId: recordInput.categoryId ?? 0,
               accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
               ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
-              date: recordInput.time && recordInput.time !== '00:00:00'
-                ? `${recordInput.date} ${recordInput.time}`
-                : recordInput.date,
-              note: `🤖 ${recordInput.note}`
+              date: recordInput.date,
+              note: `🤖 ${recordInput.note}`,
+              createdAt: recordInput.time
+                ? `${recordInput.date}T${recordInput.time}`
+                : new Date().toISOString()
             })
 
             setLoading(false)
@@ -695,22 +711,23 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
             const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
 
-
             getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
 
+            dispatch(fetchRecords(currentLedgerId as any))
+            dispatch(fetchAccounts(currentLedgerId as any))
 
-            showUndoNotification(recordId, recordInput.amount, categoryName, accountName, notification, onSuccess)
+            showSuccessNotification(recordInput, categoryName, accountName, notification)
             onClose()
             onSuccess()
           } catch (e) {
             setLoading(false)
             setLoadingText('')
             const err = e instanceof Error ? e : new Error(String(e))
-            // Map network/API errors during voice flow to VOICE_ERROR
             const mappedMessage = (err.message === 'API_ERROR' || err.message.includes('voice') || err.message.includes('audio'))
               ? 'VOICE_ERROR'
               : err.message
             handleError(new Error(mappedMessage), message)
+            showFailureNotification(mappedMessage, notification)
           }
         }
         reader.onerror = () => {
@@ -893,51 +910,70 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
     )
   }
 
-  const renderVoiceMode = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
-      <div
-        onClick={isRecording ? stopRecording : startRecording}
-        style={{
-          width: 120,
-          height: 120,
-          borderRadius: '50%',
+  const renderVoiceMode = () => {
+    const barCount = 24
+    const bars = Array.from({ length: barCount }, (_, i) => {
+      const centerDist = Math.abs(i - (barCount - 1) / 2) / ((barCount - 1) / 2)
+      const baseH = 8 + (1 - centerDist) * 16
+      const h = isRecording ? baseH + volume * (40 - centerDist * 20) : baseH
+      return h
+    })
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
+        <div
+          onClick={isRecording ? stopRecording : startRecording}
+          className={isRecording ? 'voice-recording-pulse' : ''}
+          style={{
+            width: 120,
+            height: 120,
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            border: isRecording ? '3px solid #ff4d4f' : '3px solid #d9d9d9',
+            background: isRecording ? 'rgba(255,77,79,0.08)' : 'rgba(0,0,0,0.02)',
+            transition: 'all 0.3s'
+          }}
+        >
+          <AudioOutlined
+            style={{
+              fontSize: 48,
+              color: isRecording ? '#ff4d4f' : '#8c8c8c'
+            }}
+          />
+        </div>
+        <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          cursor: 'pointer',
-          border: isRecording ? '3px solid #ff4d4f' : '3px solid #d9d9d9',
-          background: isRecording ? 'rgba(255,77,79,0.08)' : 'rgba(0,0,0,0.02)',
-          transition: 'all 0.3s',
-          animation: isRecording ? 'pulse 1.5s infinite' : 'none'
-        }}
-      >
-        <AudioOutlined
-          style={{
-            fontSize: 48,
-            color: isRecording ? '#ff4d4f' : '#8c8c8c'
-          }}
-        />
+          gap: 3,
+          height: 56,
+          marginTop: 8,
+          padding: '0 8px'
+        }}>
+          {bars.map((h, i) => (
+            <div
+              key={i}
+              style={{
+                width: 3,
+                height: h,
+                borderRadius: 2,
+                background: isRecording
+                  ? `linear-gradient(180deg, ${volume > 0.5 ? '#ff4d4f' : '#667eea'}, ${volume > 0.3 ? '#667eea' : '#bfbfbf'})`
+                  : '#d9d9d9',
+                transition: 'height 0.1s ease, background 0.2s'
+              }}
+            />
+          ))}
+        </div>
+        <Text type="secondary" style={{ fontSize: 14, marginTop: 4 }}>
+          {isRecording ? '正在录音，点击停止…' : '点击开始录音'}
+        </Text>
       </div>
-      <div style={{ width: 120, height: 6, background: '#f0f0f0', borderRadius: 3, marginTop: 12, overflow: 'hidden' }}>
-        <div style={{
-          width: `${volume * 100}%`,
-          height: '100%',
-          background: volume > 0.7 ? '#52c41a' : volume > 0.3 ? '#667eea' : '#d9d9d9',
-          borderRadius: 3,
-          transition: 'width 0.1s ease, background 0.2s'
-        }} />
-      </div>
-      <Text type="secondary" style={{ fontSize: 14, marginTop: 8 }}>
-        {isRecording ? '正在录音，点击停止…' : '点击开始录音'}
-      </Text>
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-        }
-      `}</style>
-    </div>
-  )
+    )
+  }
 
   const renderContent = () => {
     switch (mode) {
@@ -961,7 +997,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
       onCancel={onClose}
       footer={null}
       width={520}
-      destroyOnClose
+      destroyOnHidden
     >
       <Spin spinning={loading} tip={loadingText || undefined}>
         {renderContent()}
