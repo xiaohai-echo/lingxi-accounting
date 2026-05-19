@@ -32,6 +32,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
   const { items: budgets } = useSelector((state: RootState) => state.budgets)
 
   const [trendDays, setTrendDays] = useState(30)
+  const [trendFilter, setTrendFilter] = useState<'all' | 'income' | 'expense'>('all')
   const [categoryChartType, setCategoryChartType] = useState<'pie' | 'bar'>('pie')
   const [accountChartType, setAccountChartType] = useState<'pie' | 'bar'>('pie')
   const dispatch = useDispatch<AppDispatch>()
@@ -305,57 +306,20 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
 
   return (
     <div>
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={24} md={12}>
-          <Card
-            title="🤖 AI 智能记账"
-            extra={
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                size="small"
-                onClick={() => onQuickRecord ? onQuickRecord() : onNavigate?.('2')}
-                style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none' }}
-              >
-                手动记账
-              </Button>
-            }
-            bodyStyle={{ padding: '12px 16px' }}
-          >
-            <Row gutter={[12, 12]}>
-              {[
-                { key: 'text' as AIMode, icon: '💬', label: '文本记账', color: '#667eea' },
-                { key: 'screenshot' as AIMode, icon: '📷', label: '截图记账', color: '#52c41a' },
-                { key: 'camera' as AIMode, icon: '📸', label: '拍照识别', color: '#fa8c16' },
-                { key: 'voice' as AIMode, icon: '🎤', label: '语音记账', color: '#f5222d' },
-              ].map(btn => (
-                <Col xs={12} sm={12} md={6} key={btn.key}>
-                  <Card hoverable
-                    style={{ textAlign: 'center', borderColor: btn.color, borderWidth: 1 }}
-                    bodyStyle={{ padding: '12px 8px' }}
-                    onClick={() => { setAiMode(btn.key); setAiModalOpen(true) }}
-                  >
-                    <div style={{ fontSize: 24, marginBottom: 4 }}>{btn.icon}</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: btn.color }}>{btn.label}</div>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          </Card>
-        </Col>
-        <Col xs={12} sm={12} md={6}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={12} md={8}>
           <Card className="stat-card income" style={{ background: 'linear-gradient(135deg, rgba(82,196,26,0.12) 0%, rgba(82,196,26,0.04) 100%)', border: '1px solid rgba(82,196,26,0.15)' }}>
             <Statistic title={<span style={{ fontSize: 12, color: SECONDARY }}>本月收入</span>} value={thisMonthIncome} precision={2} prefix={<span style={{ fontSize: 14 }}>📈</span>} valueStyle={{ color: '#52c41a', fontSize: 18, fontWeight: 700 }} />
             <div style={{ marginTop: 4, fontSize: 11, color: TERTIARY }}>今日 +{todayIncome.toFixed(2)}</div>
           </Card>
         </Col>
-        <Col xs={12} sm={12} md={6}>
+        <Col xs={12} sm={12} md={8}>
           <Card className="stat-card expense" style={{ background: 'linear-gradient(135deg, rgba(255,77,79,0.12) 0%, rgba(255,77,79,0.04) 100%)', border: '1px solid rgba(255,77,79,0.15)' }}>
             <Statistic title={<span style={{ fontSize: 12, color: SECONDARY }}>本月支出</span>} value={thisMonthExpense} precision={2} prefix={<span style={{ fontSize: 14 }}>📉</span>} valueStyle={{ color: '#ff4d4f', fontSize: 18, fontWeight: 700 }} />
             <div style={{ marginTop: 4, fontSize: 11, color: expenseTrendUp ? '#ff4d4f' : '#52c41a' }}>较上月 {expenseTrendUp ? '↑' : '↓'} {Math.abs(Number(expenseTrend))}%</div>
           </Card>
         </Col>
-        <Col xs={12} sm={12} md={6}>
+        <Col xs={12} sm={12} md={8}>
           <Card className="stat-card balance" style={{ background: 'linear-gradient(135deg, rgba(102,126,234,0.12) 0%, rgba(102,126,234,0.04) 100%)', border: '1px solid rgba(102,126,234,0.15)' }}>
             <Statistic title={<span style={{ fontSize: 12, color: SECONDARY }}>本月结余</span>} value={thisMonthIncome - thisMonthExpense} precision={2} prefix={<span style={{ fontSize: 14 }}>💎</span>} valueStyle={{ color: '#667eea', fontSize: 18, fontWeight: 700 }} />
             <div style={{ marginTop: 4, fontSize: 11, color: TERTIARY }}>储蓄率 {thisMonthIncome > 0 ? ((thisMonthIncome - thisMonthExpense) / thisMonthIncome * 100).toFixed(1) : 0}%</div>
@@ -365,15 +329,76 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
 
       <Card
         title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, color: '#fff'
+            }}>🤖</span>
+            <span style={{ fontWeight: 600 }}>AI 智能记账</span>
+          </div>
+        }
+        extra={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            size="small"
+            onClick={() => onQuickRecord ? onQuickRecord() : onNavigate?.('2')}
+            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none' }}
+          >
+            手动记账
+          </Button>
+        }
+        styles={{ body: { padding: '16px 20px' } }}
+        style={{ marginBottom: 24, borderColor: 'rgba(102,126,234,0.2)' }}
+      >
+        <Row gutter={[16, 12]}>
+          {[
+            { key: 'text' as AIMode, icon: '💬', label: '文本记账', desc: '输入文字智能识别', color: '#667eea', bg: 'rgba(102,126,234,0.08)' },
+            { key: 'screenshot' as AIMode, icon: '📷', label: '截图记账', desc: '截取屏幕识别', color: '#52c41a', bg: 'rgba(82,196,26,0.08)' },
+            { key: 'camera' as AIMode, icon: '📸', label: '拍照识别', desc: '拍照自动记账', color: '#fa8c16', bg: 'rgba(250,140,22,0.08)' },
+            { key: 'voice' as AIMode, icon: '🎤', label: '语音记账', desc: '语音输入记账', color: '#f5222d', bg: 'rgba(245,34,45,0.08)' },
+          ].map(btn => (
+            <Col xs={12} sm={12} md={6} key={btn.key}>
+              <Card hoverable
+                className="ai-mode-card"
+                style={{ borderColor: btn.color, borderWidth: 1, background: btn.bg, textAlign: 'center' }}
+                styles={{ body: { padding: '16px 12px' } }}
+                onClick={() => { setAiMode(btn.key); setAiModalOpen(true) }}
+              >
+                <div style={{ fontSize: 28, marginBottom: 6 }}>{btn.icon}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: btn.color, marginBottom: 2 }}>{btn.label}</div>
+                <div style={{ fontSize: 11, color: TERTIARY }}>{btn.desc}</div>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </Card>
+
+      <Card
+        title={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontWeight: 600 }}>📊 收支趋势</span>
-            <Select
-              size="small"
-              value={trendDays}
-              onChange={setTrendDays}
-              style={{ width: 110 }}
-              options={TREND_PERIODS.map(p => ({ value: p.value, label: p.label }))}
-            />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Segmented
+                size="small"
+                value={trendFilter}
+                onChange={v => setTrendFilter(v as 'all' | 'income' | 'expense')}
+                options={[
+                  { label: '全部', value: 'all' },
+                  { label: '收入', value: 'income' },
+                  { label: '支出', value: 'expense' },
+                ]}
+              />
+              <Select
+                size="small"
+                value={trendDays}
+                onChange={setTrendDays}
+                style={{ width: 110 }}
+                options={TREND_PERIODS.map(p => ({ value: p.value, label: p.label }))}
+              />
+            </div>
           </div>
         }
         style={{ marginBottom: 24 }}
@@ -403,8 +428,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
               }}
             />
             <Legend />
-            <Area type="monotone" dataKey="income" stroke="#52c41a" strokeWidth={2} fill="url(#incomeGradient)" name="收入" />
-            <Area type="monotone" dataKey="expense" stroke="#ff4d4f" strokeWidth={2} fill="url(#expenseGradient)" name="支出" />
+            {(trendFilter === 'all' || trendFilter === 'income') && (
+              <Area type="monotone" dataKey="income" stroke="#52c41a" strokeWidth={2} fill="url(#incomeGradient)" name="收入" />
+            )}
+            {(trendFilter === 'all' || trendFilter === 'expense') && (
+              <Area type="monotone" dataKey="expense" stroke="#ff4d4f" strokeWidth={2} fill="url(#expenseGradient)" name="支出" />
+            )}
           </AreaChart>
         </ResponsiveContainer>
       </Card>
