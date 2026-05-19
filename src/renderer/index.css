@@ -274,3 +274,74 @@ body {
     padding: 0 12px !important;
   }
 }
+
+.ai-mode-card {
+  transition: all 0.3s ease;
+  cursor: pointer;
+  border-radius: 12px;
+  text-align: center;
+  padding: 20px 12px;
+}
+
+.ai-mode-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+}
+
+.ai-mode-card:active {
+  transform: translateY(-1px);
+}
+
+.ai-result-card {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.ai-result-card .ant-card-head {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.06) 0%, rgba(118, 75, 162, 0.06) 100%);
+}
+
+@keyframes voicePulse {
+  0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4); }
+  70% { box-shadow: 0 0 0 12px rgba(102, 126, 234, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
+}
+
+.voice-recording-pulse {
+  animation: voicePulse 1.5s infinite;
+}
+
+@keyframes aiShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.ai-loading-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(102, 126, 234, 0.08) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: aiShimmer 2s infinite;
+}
+
+.ai-gradient-border {
+  position: relative;
+}
+
+.ai-gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .ai-mode-card {
+    padding: 14px 8px;
+  }
+}

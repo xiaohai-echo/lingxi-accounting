@@ -60,3 +60,6 @@ dogfood-output/
 
 android-sdk/
 electron-builder-cache/
+
+# Session handoff
+handoff/

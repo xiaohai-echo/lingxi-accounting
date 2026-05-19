@@ -8,7 +8,17 @@ export default defineConfig({
   root: './src/renderer',
   build: {
     outDir: '../../dist/renderer',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-redux', '@reduxjs/toolkit'],
+          'vendor-antd': ['antd', '@ant-design/icons'],
+          'vendor-chart': ['recharts'],
+        }
+      }
+    },
+    chunkSizeWarningLimit: 600
   },
   resolve: {
     alias: {
