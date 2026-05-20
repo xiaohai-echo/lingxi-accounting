@@ -441,7 +441,56 @@ export async function extractFromImage(base64: string, accounts?: AccountItem[],
 
 // ==================== Voice Transcription ====================
 
-export async function transcribeVoice(audioBase64: string, _mimeType?: string): Promise<string> {
+function encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffer {
+  const buffer = new ArrayBuffer(44 + samples.length * 2)
+  const view = new DataView(buffer)
+
+  const writeString = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i))
+  }
+
+  writeString(0, 'RIFF')
+  view.setUint32(4, 36 + samples.length * 2, true)
+  writeString(8, 'WAVE')
+  writeString(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeString(36, 'data')
+  view.setUint32(40, samples.length * 2, true)
+
+  let offset = 44
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]))
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+  }
+
+  return buffer
+}
+
+async function convertToWav(audioBlob: Blob): Promise<string> {
+  const arrayBuffer = await audioBlob.arrayBuffer()
+  const audioCtx = new AudioContext()
+  try {
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+    const samples = audioBuffer.getChannelData(0)
+    const wavBuffer = encodeWav(samples, audioBuffer.sampleRate)
+    const bytes = new Uint8Array(wavBuffer)
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    return btoa(binary)
+  } finally {
+    audioCtx.close()
+  }
+}
+
+export async function transcribeVoice(audioBase64: string, mimeType?: string): Promise<string> {
   const apiKey = getApiKey()
   if (!apiKey) throw new Error('API_KEY_MISSING')
 
@@ -449,6 +498,21 @@ export async function transcribeVoice(audioBase64: string, _mimeType?: string): 
   if (audioBase64.startsWith('data:')) {
     const commaIdx = audioBase64.indexOf(',')
     if (commaIdx !== -1) base64Data = audioBase64.substring(commaIdx + 1)
+  }
+
+  const isWebm = mimeType?.includes('webm') || mimeType?.includes('ogg')
+  if (isWebm) {
+    try {
+      const binaryStr = atob(base64Data)
+      const bytes = new Uint8Array(binaryStr.length)
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i)
+      }
+      const blob = new Blob([bytes], { type: mimeType || 'audio/webm' })
+      base64Data = await convertToWav(blob)
+    } catch (e) {
+      console.warn('[ASR] webm→wav conversion failed, sending original:', e)
+    }
   }
 
   const formData = new FormData()

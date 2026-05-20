@@ -198,6 +198,8 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
   const voiceStreamRef = useRef<MediaStream | null>(null)
   const speechResultRef = useRef<string>('')
   const recognitionRef = useRef<any>(null)
+  const volumeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
 
   // ==================== Cleanup on close ====================
 
@@ -217,10 +219,18 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
       stopMediaStream(voiceStreamRef.current)
       voiceStreamRef.current = null
       if (recognitionRef.current) {
-        recognitionRef.current.stop()
+        try { recognitionRef.current.stop() } catch { /* already stopped */ }
         recognitionRef.current = null
       }
       speechResultRef.current = ''
+      if (volumeTimerRef.current) {
+        clearInterval(volumeTimerRef.current)
+        volumeTimerRef.current = null
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {})
+        audioCtxRef.current = null
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop()
       }
@@ -235,8 +245,16 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
       stopMediaStream(cameraStream)
       stopMediaStream(voiceStreamRef.current)
       if (recognitionRef.current) {
-        recognitionRef.current.stop()
+        try { recognitionRef.current.stop() } catch { /* already stopped */ }
         recognitionRef.current = null
+      }
+      if (volumeTimerRef.current) {
+        clearInterval(volumeTimerRef.current)
+        volumeTimerRef.current = null
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {})
+        audioCtxRef.current = null
       }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop()
@@ -637,42 +655,52 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
     try {
       stopMediaStream(voiceStreamRef.current)
       voiceStreamRef.current = null
+      speechResultRef.current = ''
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       voiceStreamRef.current = stream
 
-      // Start Web Speech API recognition as primary voice input
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      let recognition: any = null
       if (SpeechRecognition) {
-        recognition = new SpeechRecognition()
+        const recognition = new SpeechRecognition()
         recognition.lang = 'zh-CN'
         recognition.interimResults = true
         recognition.continuous = true
         recognition.onresult = (e: any) => {
-          for (let i = e.resultIndex; i < e.results.length; i++) {
+          let finalTranscript = ''
+          for (let i = 0; i < e.results.length; i++) {
             if (e.results[i].isFinal) {
-              speechResultRef.current += e.results[i][0].transcript
+              finalTranscript += e.results[i][0].transcript
             }
           }
+          if (finalTranscript) {
+            speechResultRef.current = finalTranscript
+          }
         }
-        recognition.onerror = () => { /* silent fallback to GLM-4-Voice */ }
-        recognition.start()
-        recognitionRef.current = recognition
+        recognition.onerror = (e: any) => {
+          console.warn('[Voice] SpeechRecognition error:', e.error)
+        }
+        recognition.onend = () => {
+          console.log('[Voice] SpeechRecognition ended')
+        }
+        try {
+          recognition.start()
+          recognitionRef.current = recognition
+        } catch (e) {
+          console.warn('[Voice] SpeechRecognition start failed:', e)
+          recognitionRef.current = null
+        }
       }
 
-      // Setup volume meter
-      let audioCtx: AudioContext | null = null
-      let analyser: AnalyserNode | null = null
-      let volumeTimer: ReturnType<typeof setInterval> | null = null
       try {
-        audioCtx = new AudioContext()
-        analyser = audioCtx.createAnalyser()
+        const audioCtx = new AudioContext()
+        const analyser = audioCtx.createAnalyser()
         analyser.fftSize = 256
         const source = audioCtx.createMediaStreamSource(stream)
         source.connect(analyser)
         const dataArray = new Uint8Array(analyser.frequencyBinCount)
-        volumeTimer = setInterval(() => {
+        audioCtxRef.current = audioCtx
+        volumeTimerRef.current = setInterval(() => {
           if (!analyser) return
           analyser.getByteFrequencyData(dataArray)
           const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
@@ -682,14 +710,16 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
-        : 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4'
 
       const recorder = new MediaRecorder(stream, { mimeType })
       mediaRecorderRef.current = recorder
       audioChunksRef.current = []
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
+        if (e.data && e.data.size > 0) {
           audioChunksRef.current.push(e.data)
         }
       }
@@ -697,15 +727,33 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
       recorder.onstop = async () => {
         setIsRecording(false)
         setVolume(0)
-        if (volumeTimer) clearInterval(volumeTimer)
-        if (audioCtx) audioCtx.close().catch(() => {})
+        if (volumeTimerRef.current) {
+          clearInterval(volumeTimerRef.current)
+          volumeTimerRef.current = null
+        }
+        if (audioCtxRef.current) {
+          audioCtxRef.current.close().catch(() => {})
+          audioCtxRef.current = null
+        }
         stopMediaStream(stream)
         voiceStreamRef.current = null
 
-        // Check if Web Speech API produced a result first
-        if (speechResultRef.current.trim()) {
-          const speechText = speechResultRef.current.trim()
-          speechResultRef.current = ''
+        await new Promise<void>((resolve) => {
+          if (recognitionRef.current) {
+            try {
+              recognitionRef.current.stop()
+            } catch { /* already stopped */ }
+            recognitionRef.current = null
+            setTimeout(resolve, 300)
+          } else {
+            resolve()
+          }
+        })
+
+        const speechText = speechResultRef.current.trim()
+        speechResultRef.current = ''
+
+        if (speechText) {
           setLoading(true)
           setLoadingText('AI 正在识别…')
           try {
@@ -720,17 +768,25 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
               text: speechText, accounts: accountsForAI, categories: categoriesForAI
             })
             setLoadingText('正在写入…')
-            const voicePath1 = `audio/record_${Date.now()}.webm`
-            const audioBlob1 = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-            const audioBase641 = await new Promise<string>((resolve) => {
-              const reader = new FileReader()
-              reader.onload = () => {
-                const result = reader.result as string
-                resolve(result.split(',')[1] || result)
+
+            let voicePath: string | undefined
+            if (audioChunksRef.current.length > 0) {
+              voicePath = `audio/record_${Date.now()}.webm`
+              const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
+              const audioBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader()
+                reader.onload = () => {
+                  const result = reader.result as string
+                  resolve(result.split(',')[1] || result)
+                }
+                reader.onerror = () => resolve('')
+                reader.readAsDataURL(audioBlob)
+              })
+              if (audioBase64) {
+                try { await getApi().saveAttachment(voicePath, audioBase64) } catch { /* fallback */ }
               }
-              reader.readAsDataURL(audioBlob1)
-            })
-            try { await getApi().saveAttachment(voicePath1, audioBase641) } catch { /* fallback */ }
+            }
+
             await getApi().addRecord({
               amount: recordInput.amount, type: recordInput.type,
               categoryId: recordInput.categoryId ?? 0,
@@ -742,7 +798,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
               date: recordInput.date,
               title: recordInput.title,
               note: `语音转写：${speechText}`,
-              rawFilePath: voicePath1,
+              rawFilePath: voicePath,
               source: 'ai_voice',
               createdAt: recordInput.time
                 ? `${recordInput.date}T${recordInput.time}`
@@ -771,116 +827,104 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
             setLoading(false)
             setLoadingText('')
             const err = e instanceof Error ? e : new Error(String(e))
-            const mappedMsg = err.message === 'API_ERROR' ? 'VOICE_ERROR' : err.message
-            handleError(new Error(mappedMsg), message)
-            showFailureNotification(mappedMsg, notification)
+            handleError(err, message)
+            showFailureNotification(err.message, notification)
             return
           }
         }
 
-        if (audioChunksRef.current.length === 0) { setLoading(true); setLoadingText(""); handleError(new Error("VOICE_ERROR"), message); return }
-
-        const blob = new Blob(audioChunksRef.current, { type: mimeType })
-
-        // Read blob as base64
-        const reader = new FileReader()
-        reader.onload = async () => {
-          const base64 = (reader.result as string).split(',')[1] || (reader.result as string)
-
-          setLoading(true)
-          setLoadingText('AI 正在识别…')
-
-          try {
-            const transcription = await transcribeVoice(base64, mimeType)
-            if (!transcription.trim()) throw new Error("VOICE_ERROR")
-
-            const accountsForAI: AccountItem[] = accounts.map((a) => ({
-              id: a.id,
-              name: a.name,
-              type: a.type,
-              cardNo: a.cardNo,
-              bankName: a.bankName,
-              holderName: a.holderName
-            }))
-
-            const categoriesForAI: CategoryItem[] = categories.map((c) => ({
-              id: c.id!,
-              name: c.name,
-              type: c.type,
-              icon: c.icon,
-              color: c.color
-            }))
-
-            const recordInput = await analyzeAccounting({
-              text: transcription,
-              accounts: accountsForAI,
-              categories: categoriesForAI
-            })
-
-            setLoadingText('正在写入…')
-
-            const voicePath2 = `audio/record_${Date.now()}.webm`
-            try { await getApi().saveAttachment(voicePath2, base64) } catch { /* fallback */ }
-
-            await getApi().addRecord({
-              amount: recordInput.amount,
-              type: recordInput.type,
-              categoryId: recordInput.categoryId ?? 0,
-              accountId: recordInput.accountId ?? getDefaultAccountId() ?? (accounts[0]?.id ?? 1),
-              targetAccountId: recordInput.type === 'transfer' ? recordInput.targetAccountId : undefined,
-              transferType: recordInput.type === 'transfer' ? recordInput.transferType : undefined,
-              fee: recordInput.type === 'transfer' ? recordInput.fee : undefined,
-              ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
-              date: recordInput.date,
-              title: recordInput.title,
-              note: `语音转写：${transcription}`,
-              rawFilePath: voicePath2,
-              source: 'ai_voice',
-              createdAt: recordInput.time
-                ? `${recordInput.date}T${recordInput.time}`
-                : new Date().toISOString()
-            })
-
-            setLoading(false)
-            setLoadingText('')
-
-            const category = categories.find((c) => c.id === recordInput.categoryId)
-            const account = accounts.find((a) => a.id === recordInput.accountId)
-            const targetAccount = recordInput.type === 'transfer' ? accounts.find((a) => a.id === recordInput.targetAccountId) : undefined
-            const categoryName = category?.name ?? '未分类'
-            const accountName = account?.name ?? '默认账户'
-            const targetAccountName = targetAccount?.name
-
-            const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
-
-            getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.title}`, `${categoryName} | ${accountName}`)
-
-            dispatch(fetchRecords(currentLedgerId as any))
-            dispatch(fetchAccounts(currentLedgerId as any))
-
-            showSuccessNotification(recordInput, categoryName, accountName, targetAccountName, notification)
-            onClose()
-            onSuccess()
-          } catch (e) {
-            setLoading(false)
-            setLoadingText('')
-            const err = e instanceof Error ? e : new Error(String(e))
-            const mappedMessage = (err.message === 'API_ERROR' || err.message.includes('voice') || err.message.includes('audio'))
-              ? 'VOICE_ERROR'
-              : err.message
-            handleError(new Error(mappedMessage), message)
-            showFailureNotification(mappedMessage, notification)
-          }
+        if (audioChunksRef.current.length === 0) {
+          message.error('未录制到音频，请检查麦克风权限后重试')
+          return
         }
-        reader.onerror = () => {
+
+        setLoading(true)
+        setLoadingText('AI 正在识别语音…')
+
+        try {
+          const blob = new Blob(audioChunksRef.current, { type: mimeType })
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const result = reader.result as string
+              resolve(result.split(',')[1] || result)
+            }
+            reader.onerror = () => reject(new Error('音频读取失败'))
+            reader.readAsDataURL(blob)
+          })
+
+          const transcription = await transcribeVoice(base64, mimeType)
+          if (!transcription.trim()) {
+            throw new Error('语音识别结果为空，请重新录制')
+          }
+
+          const accountsForAI: AccountItem[] = accounts.map((a) => ({
+            id: a.id, name: a.name, type: a.type,
+            cardNo: a.cardNo, bankName: a.bankName, holderName: a.holderName
+          }))
+          const categoriesForAI: CategoryItem[] = categories.map((c) => ({
+            id: c.id!, name: c.name, type: c.type, icon: c.icon, color: c.color
+          }))
+
+          const recordInput = await analyzeAccounting({
+            text: transcription, accounts: accountsForAI, categories: categoriesForAI
+          })
+
+          setLoadingText('正在写入…')
+
+          const voicePath = `audio/record_${Date.now()}.webm`
+          try { await getApi().saveAttachment(voicePath, base64) } catch { /* fallback */ }
+
+          await getApi().addRecord({
+            amount: recordInput.amount, type: recordInput.type,
+            categoryId: recordInput.categoryId ?? 0,
+            accountId: recordInput.accountId ?? getDefaultAccountId() ?? (accounts[0]?.id ?? 1),
+            targetAccountId: recordInput.type === 'transfer' ? recordInput.targetAccountId : undefined,
+            transferType: recordInput.type === 'transfer' ? recordInput.transferType : undefined,
+            fee: recordInput.type === 'transfer' ? recordInput.fee : undefined,
+            ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
+            date: recordInput.date,
+            title: recordInput.title,
+            note: `语音转写：${transcription}`,
+            rawFilePath: voicePath,
+            source: 'ai_voice',
+            createdAt: recordInput.time
+              ? `${recordInput.date}T${recordInput.time}`
+              : new Date().toISOString()
+          })
+
           setLoading(false)
           setLoadingText('')
-          message.error('音频读取失败')
+
+          const category = categories.find((c) => c.id === recordInput.categoryId)
+          const account = accounts.find((a) => a.id === recordInput.accountId)
+          const targetAccount = recordInput.type === 'transfer' ? accounts.find((a) => a.id === recordInput.targetAccountId) : undefined
+          const categoryName = category?.name ?? '未分类'
+          const accountName = account?.name ?? '默认账户'
+          const targetAccountName = targetAccount?.name
+          const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
+
+          getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.title}`, `${categoryName} | ${accountName}`)
+
+          dispatch(fetchRecords(currentLedgerId as any))
+          dispatch(fetchAccounts(currentLedgerId as any))
+
+          showSuccessNotification(recordInput, categoryName, accountName, targetAccountName, notification)
+          onClose()
+          onSuccess()
+        } catch (e) {
+          setLoading(false)
+          setLoadingText('')
+          const err = e instanceof Error ? e : new Error(String(e))
+          const mappedMessage = err.message.includes('ASR_ERROR') || err.message.includes('voice') || err.message.includes('audio')
+            ? '语音识别失败，请重试'
+            : err.message
+          handleError(new Error(mappedMessage), message)
+          showFailureNotification(mappedMessage, notification)
         }
-        reader.readAsDataURL(blob)
       }
 
-      recorder.start()
+      recorder.start(1000)
       setIsRecording(true)
     } catch {
       message.error('无法访问麦克风，请检查权限设置')
@@ -889,7 +933,9 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
   const stopRecording = useCallback(() => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop()
+      try {
+        recognitionRef.current.stop()
+      } catch { /* already stopped */ }
       recognitionRef.current = null
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -1113,6 +1159,11 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
         <Text type="secondary" style={{ fontSize: 14, marginTop: 4 }}>
           {isRecording ? '正在录音，点击停止…' : '点击开始录音'}
         </Text>
+        {!isRecording && !navigator.mediaDevices && (
+          <Text type="warning" style={{ fontSize: 12 }}>
+            当前浏览器不支持麦克风录音，请使用 Chrome 或 Edge 浏览器
+          </Text>
+        )}
       </div>
     )
   }

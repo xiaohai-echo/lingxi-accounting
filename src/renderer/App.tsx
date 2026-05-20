@@ -265,7 +265,7 @@ function AppContent() {
         token: { colorPrimary: '#667eea' }
       }}
     >
-      <Layout style={{ minHeight: '100vh', ...(isMobile ? { paddingBottom: 52 } : {}) }} data-theme={isDark ? 'dark' : 'light'}>
+      <Layout style={{ height: '100vh', overflow: 'hidden', ...(isMobile ? { paddingBottom: 52 } : {}) }} data-theme={isDark ? 'dark' : 'light'}>
         {!isMobile && (
           <Sider
             collapsible
@@ -297,13 +297,17 @@ function AppContent() {
           </Sider>
         )}
 
-        <Layout>
+        <Layout style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Header style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '0 24px',
             background: isDark ? '#001529' : '#ffffff',
             borderBottom: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #f0f0f0',
-            height: 56
+            height: 56,
+            flexShrink: 0,
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               {isMobile && (
@@ -350,6 +354,7 @@ function AppContent() {
           <Content style={{
             padding: isMobile ? 12 : 24,
             overflow: 'auto',
+            flex: 1,
             paddingBottom: isMobile ? 12 : 0
           }}>
             <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}><Spin size="large" /></div>}>
