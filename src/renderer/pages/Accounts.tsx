@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Card, Button, Modal, Form, Input, InputNumber, Select, App, Popconfirm, Row, Col, Space, List, Empty, AutoComplete, Dropdown } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, SwapOutlined, ArrowRightOutlined, DollarOutlined, WalletOutlined, EllipsisOutlined } from '@ant-design/icons'
+import { Card, Button, Modal, Form, Input, InputNumber, Select, App, Row, Col, Space, List, Empty, AutoComplete, Dropdown } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, SwapOutlined, ArrowRightOutlined, DollarOutlined, WalletOutlined, EllipsisOutlined, StarFilled } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
 import { addAccount, updateAccount, deleteAccount, fetchAccounts } from '../store/slices/accountsSlice'
-import { transferRecord, deleteRecord, fetchRecords } from '../store/slices/recordsSlice'
+import { transferRecord, fetchRecords } from '../store/slices/recordsSlice'
 import type { Account, Record as RecordType } from '../../main/database/schema'
-import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_LABELS } from '../utils/constants'
+import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_COLORS, getDefaultAccountId, setDefaultAccountId } from '../utils/constants'
 
 const { Option } = Select
 
@@ -43,7 +43,6 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
 
   const SECONDARY = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)'
   const TERTIARY = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)'
-  const NOTE_COLOR = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
@@ -66,6 +65,34 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
 
   const getCategoryById = (id: number) => categories.find(c => c.id === id)
   const getAccountById = (id: number) => accounts.find(a => a.id === id)
+
+  const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+    manual: { label: '手动', color: '#8c8c8c', icon: '✏️' },
+    ai_text: { label: 'AI文本', color: '#667eea', icon: '💬' },
+    ai_voice: { label: 'AI语音', color: '#faad14', icon: '🎙️' },
+    ai_image: { label: 'AI图片', color: '#13c2c2', icon: '📷' },
+  }
+
+  const renderSourceTag = (source?: string) => {
+    const cfg = SOURCE_CONFIG[source || 'manual'] || SOURCE_CONFIG.manual
+    return (
+      <span className="source-tag" style={{ background: cfg.color + '18', color: cfg.color, border: `1px solid ${cfg.color}30` }}>
+        {cfg.icon} {cfg.label}
+      </span>
+    )
+  }
+
+  const renderAccountTagSmall = (accountId: number) => {
+    const acc = getAccountById(accountId)
+    if (!acc) return null
+    const icon = ACCOUNT_TYPE_ICONS[acc.type] || '💰'
+    const color = ACCOUNT_TYPE_COLORS[acc.type] || '#667eea'
+    return (
+      <span className="payment-tag" style={{ background: color + '22', color, border: `1px solid ${color}33` }}>
+        {icon} {acc.name}
+      </span>
+    )
+  }
 
   const accountRecords = useMemo(() => {
     if (!detailAccount) return []
@@ -127,8 +154,17 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
       }
 
       if (values.type === 'bank' || values.type === 'credit') {
-        const bankShort = values.bankName || ''
-        account.uniqueId = `${bankShort}尾号${values.cardNo || ''}`
+        const bankFull = values.bankName || ''
+        const bankShortName = bankFull === '中国银行' ? '中国银行' : bankFull.replace(/^中国/, '')
+        let bankMinimalName: string
+        if (bankShortName === '中国银行') {
+          bankMinimalName = '中行'
+        } else {
+          bankMinimalName = bankShortName.replace(/银行$/, '')
+        }
+        account.uniqueId = bankMinimalName
+          ? `${bankMinimalName}${values.cardNo || ''}`
+          : `${values.type}:${values.name}`
       } else if (values.type === 'wechat' || values.type === 'alipay') {
         const typeLabel = values.type === 'wechat' ? '微信' : '支付宝'
         account.uniqueId = `${typeLabel}-${values.holderName || values.uniqueId || values.name}`
@@ -263,15 +299,6 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
     }
   }
 
-  const handleDeleteRecord = async (id: number) => {
-    try {
-      await dispatch(deleteRecord(id)).unwrap()
-      message.success('记录删除成功！')
-    } catch (error) {
-      message.error('删除失败，请重试')
-    }
-  }
-
   const renderDetailFields = () => {
     if (!detailAccount) return null
     const fields: { label: string; value: string }[] = [
@@ -301,45 +328,31 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
       const targetAccount = record.targetAccountId ? getAccountById(record.targetAccountId) : null
       return (
         <List.Item
-          actions={[
-            <Popconfirm
-              title="确定要删除这条转账记录吗？"
-              onConfirm={() => handleDeleteRecord(record.id!)}
-              okText="确定" cancelText="取消"
-            >
-              <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-            </Popconfirm>
-          ]}
         >
-          <List.Item.Meta
-            avatar={
-              <div style={{
-                width: 36, height: 36, borderRadius: 10,
-                background: '#667eea20',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16
-              }}>
-                <SwapOutlined style={{ color: '#667eea' }} />
-              </div>
-            }
-            title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#667eea20', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <SwapOutlined style={{ color: '#667eea', fontSize: 14 }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {isSource ? `转出至 ${targetAccount?.name || ''}` : `从 ${sourceAccount?.name || ''} 转入`}
                 </span>
                 <span style={{
                   color: isSource ? '#ff4d4f' : '#52c41a',
-                  fontWeight: 700, fontSize: 14, fontFamily: 'Inter, monospace'
+                  fontWeight: 700, fontSize: 14, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', marginLeft: 8
                 }}>
                   {isSource ? '-' : '+'}¥{record.amount.toFixed(2)}
                 </span>
               </div>
-            }
-            description={
-              <div style={{ fontSize: 12, color: NOTE_COLOR }}>
-                {record.date} {record.note && record.note !== `转账：${sourceAccount?.name || ''} → ${targetAccount?.name || ''}` ? `· ${record.note}` : ''}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                {renderAccountTagSmall(record.accountId)}
+                <span style={{ color: TERTIARY, fontSize: 11 }}>→</span>
+                {record.targetAccountId && renderAccountTagSmall(record.targetAccountId)}
+                <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 'auto' }}>{record.date}</span>
               </div>
-            }
-          />
+            </div>
+          </div>
         </List.Item>
       )
     }
@@ -349,51 +362,43 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
     const effectiveAmount = record.type === 'expense' && record.refundAmount
       ? Math.max(0, record.amount - record.refundAmount + (record.shippingFee || 0))
       : record.amount
+    const coreContent = record.title || record.note || category?.name || '未分类'
+
     return (
       <List.Item
-        actions={[
-          <Popconfirm
-            title="确定要删除这条记录吗？"
-            onConfirm={() => handleDeleteRecord(record.id!)}
-            okText="确定" cancelText="取消"
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
-        ]}
       >
-        <List.Item.Meta
-          avatar={
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: (category?.color || '#667eea') + '20',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16
-            }}>
-              {category?.icon || '💸'}
-            </div>
-          }
-          title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+          <div style={{
+            width: 36, height: 48, borderRadius: 10,
+            background: (category?.color || '#667eea') + '20',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0
+          }}>
+            <span style={{ fontSize: 16, lineHeight: 1 }}>{category?.icon || '💸'}</span>
+            <span style={{ fontSize: 9, color: SECONDARY, lineHeight: 1, maxWidth: 34, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category?.name}</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 500 }}>
-                {category?.name || '未知'}
+              <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                {coreContent}
                 {isRefunded && <span style={{ fontSize: 11, color: '#faad14', marginLeft: 6 }}>
                   {record.refundStatus === 'full' ? '(已退款)' : '(部分退款)'}
                 </span>}
               </span>
               <span style={{
                 color: record.type === 'income' ? '#52c41a' : '#ff4d4f',
-                fontWeight: 700, fontSize: 14, fontFamily: 'Inter, monospace'
+                fontWeight: 700, fontSize: 14, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', marginLeft: 8
               }}>
                 {record.type === 'income' ? '+' : '-'}¥{effectiveAmount.toFixed(2)}
               </span>
             </div>
-          }
-          description={
-            <div style={{ fontSize: 12, color: NOTE_COLOR }}>
-              {record.date} {record.note ? `· ${record.note}` : ''}
-              {isRefunded && record.refundAmount ? ` · 退¥${record.refundAmount.toFixed(2)}${record.shippingFee ? ` 运费¥${record.shippingFee.toFixed(2)}` : ''}` : ''}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+              {renderSourceTag(record.source)}
+              {renderAccountTagSmall(record.accountId)}
+              {isRefunded && record.refundAmount ? <span style={{ fontSize: 10, color: '#faad14' }}>退¥{record.refundAmount.toFixed(2)}{record.shippingFee ? ` 运费¥${record.shippingFee.toFixed(2)}` : ''}</span> : ''}
+              <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 'auto' }}>{record.date}</span>
             </div>
-          }
-        />
+          </div>
+        </div>
       </List.Item>
     )
   }
@@ -509,7 +514,12 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
           const icon = ACCOUNT_TYPE_ICONS[account.type] || '💰'
           const currentBalance = account.balance
           const actionColor = 'rgba(255,255,255,0.85)'
+          const isDefault = getDefaultAccountId() === account.id
           const actionItems = [
+            {
+              key: 'default',
+              label: <span onClick={() => { setDefaultAccountId(isDefault ? null : account.id!) }}><StarFilled style={{ marginRight: 8, color: isDefault ? '#faad14' : '#8c8c8c' }} />{isDefault ? '取消默认' : '设为默认账户'}</span>
+            },
             {
               key: 'transfer',
               label: <span onClick={() => { setDetailAccount(account); showTransfer() }}><SwapOutlined style={{ marginRight: 8 }} />转账</span>
@@ -551,6 +561,7 @@ const Accounts: React.FC<AccountsProps> = ({ isDark = true, onViewAccountRecords
                       <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {account.name}
                       </div>
+                      {isDefault && <StarFilled style={{ color: '#faad14', fontSize: 12 }} />}
                     </div>
                     <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, fontFamily: 'Inter, monospace' }}>
                       ¥{currentBalance.toFixed(2)}

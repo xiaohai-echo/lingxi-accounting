@@ -1,4 +1,6 @@
-import { ipcMain } from 'electron'
+import { ipcMain, app } from 'electron'
+import path from 'node:path'
+import fs from 'node:fs'
 import {
   getRecords, addRecord, updateRecord, deleteRecord,
   getAccounts, addAccount, updateAccount, deleteAccount,
@@ -11,6 +13,15 @@ import {
   exportData, importData, exportCSV, getLedgerStats, mergeLedger,
   getUserById
 } from '../database'
+
+function getAttachmentsDir(): string {
+  const userDataPath = app.getPath('userData')
+  const dir = path.join(userDataPath, 'attachments')
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  return dir
+}
 
 export function registerIpcHandlers() {
   // Records
@@ -129,6 +140,38 @@ export function registerIpcHandlers() {
       return { success: true, message: `成功添加 ${testRecords.length} 条测试记录` }
     } catch (error) {
       return { success: false, message: `添加测试数据失败: ${error}` }
+    }
+  })
+
+  // Attachments
+  ipcMain.handle('save-attachment', (_e, relativePath: string, base64Data: string) => {
+    try {
+      const attachmentsDir = getAttachmentsDir()
+      const filePath = path.join(attachmentsDir, relativePath)
+      const dir = path.dirname(filePath)
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      const buffer = Buffer.from(base64Data, 'base64')
+      fs.writeFileSync(filePath, buffer)
+      return { success: true, path: relativePath }
+    } catch (error: any) {
+      return { success: false, message: error.message }
+    }
+  })
+
+  ipcMain.handle('read-attachment', (_e, relativePath: string) => {
+    try {
+      const attachmentsDir = getAttachmentsDir()
+      const filePath = path.join(attachmentsDir, relativePath)
+      if (!fs.existsSync(filePath)) {
+        return { success: false, message: '文件不存在' }
+      }
+      const buffer = fs.readFileSync(filePath)
+      const base64 = buffer.toString('base64')
+      return { success: true, base64 }
+    } catch (error: any) {
+      return { success: false, message: error.message }
     }
   })
 }

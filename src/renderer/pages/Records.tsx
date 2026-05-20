@@ -1,23 +1,20 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Card, List, Button, Modal, Form, Input, Select, DatePicker, InputNumber,
-  App, Popconfirm, Tabs, Row, Col, Tag, TimePicker, Dropdown, Segmented
+  App, Popconfirm, Tabs, Row, Col, Tag, TimePicker, Dropdown
 } from 'antd'
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  FilterOutlined, CloseOutlined, SwapOutlined, RollbackOutlined, EllipsisOutlined,
-  CameraOutlined, PictureOutlined, SendOutlined, ReloadOutlined
+  FilterOutlined, CloseOutlined, SwapOutlined, RollbackOutlined, EllipsisOutlined
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
 import { addRecord, updateRecord, deleteRecord, refundRecordThunk, fetchRecords } from '../store/slices/recordsSlice'
 import { fetchAccounts } from '../store/slices/accountsSlice'
 import type { Record as RecordType } from '../../main/database/schema'
-import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_COLORS } from '../utils/constants'
-import { getApiKeyStatus, analyzeAccounting } from '../services/ai'
-import { getApi } from '../api/mock'
-import type { AccountItem, CategoryItem } from '../services/ai'
+import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_COLORS, getDefaultAccountId } from '../utils/constants'
+import RecordDetailModal from '../components/RecordDetailModal'
 
 const { Option } = Select
 const { TextArea } = Input
@@ -46,7 +43,6 @@ const Records: React.FC<RecordsProps> = ({
 }) => {
   const SECONDARY = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)'
   const TERTIARY = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)'
-  const NOTE_COLOR = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
 
   const { message } = App.useApp()
   const dispatch = useDispatch<AppDispatch>()
@@ -59,7 +55,6 @@ const Records: React.FC<RecordsProps> = ({
   const [editingRecord, setEditingRecord] = useState<RecordType | null>(null)
   const [recordType, setRecordType] = useState<'income' | 'expense'>('expense')
   const [activeTab, setActiveTab] = useState('all')
-  const [addModalTab, setAddModalTab] = useState<'manual' | 'ai'>('manual')
   const [searchText, setSearchText] = useState('')
   const [form] = Form.useForm()
 
@@ -72,18 +67,8 @@ const Records: React.FC<RecordsProps> = ({
   const [refundTargetRecord, setRefundTargetRecord] = useState<RecordType | null>(null)
   const [refundForm] = Form.useForm()
 
-  // --- AI inline modes ---
-  const [aiMode, setAiMode] = useState<'text' | 'screenshot' | 'camera'>('text')
-  const [aiText, setAiText] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiImageBase64, setAiImageBase64] = useState<string | null>(null)
-  const [aiImagePreview, setAiImagePreview] = useState<string | null>(null)
-  const aiFileInputRef = useRef<HTMLInputElement>(null)
-  const [aiCameraStream, setAiCameraStream] = useState<MediaStream | null>(null)
-  const [aiPhotoBase64, setAiPhotoBase64] = useState<string | null>(null)
-  const [aiPhotoPreview, setAiPhotoPreview] = useState<string | null>(null)
-  const aiVideoRef = useRef<HTMLVideoElement>(null)
-  const aiCanvasRef = useRef<HTMLCanvasElement>(null)
+  const [detailVisible, setDetailVisible] = useState(false)
+  const [detailRecord, setDetailRecord] = useState<RecordType | null>(null)
 
   const getCategoryById = (id: number) => categories.find(c => c.id === id)
   const getAccountById = (id: number) => accounts.find(a => a.id === id)
@@ -112,16 +97,6 @@ const Records: React.FC<RecordsProps> = ({
       onFilterConsumed?.()
     }
   }, [initialFilterCategoryId])
-
-  // Cleanup AI camera on tab switch or modal close
-  useEffect(() => {
-    if (!isModalOpen || addModalTab !== 'ai') {
-      if (aiCameraStream) {
-        aiCameraStream.getTracks().forEach(t => t.stop())
-        setAiCameraStream(null)
-      }
-    }
-  }, [isModalOpen, addModalTab])
 
   const hasActiveFilters = filterCategory !== undefined || filterDateRange !== null || filterAccount !== undefined
 
@@ -192,20 +167,7 @@ const Records: React.FC<RecordsProps> = ({
     setEditingRecord(null)
     form.resetFields()
     setRecordType('expense')
-    setAddModalTab('manual')
-    form.setFieldsValue({ date: dayjs(), time: dayjs(), type: 'expense' })
-    // Reset AI state
-    setAiMode('text')
-    setAiText('')
-    setAiLoading(false)
-    setAiImageBase64(null)
-    setAiImagePreview(null)
-    setAiPhotoBase64(null)
-    setAiPhotoPreview(null)
-    if (aiCameraStream) {
-      aiCameraStream.getTracks().forEach(t => t.stop())
-      setAiCameraStream(null)
-    }
+    form.setFieldsValue({ date: dayjs(), time: dayjs(), type: 'expense', accountId: getDefaultAccountId() ?? undefined })
     setIsModalOpen(true)
   }
 
@@ -215,12 +177,13 @@ const Records: React.FC<RecordsProps> = ({
     setRecordType(record.type)
     form.setFieldsValue({
       type: record.type,
+      title: record.title || '',
       amount: record.amount,
       categoryId: record.categoryId,
       accountId: record.accountId,
       date: dayjs(record.date),
       time: record.createdAt ? dayjs(record.createdAt) : dayjs(),
-      note: record.note
+      note: record.note,
     })
     setIsModalOpen(true)
   }
@@ -244,7 +207,9 @@ const Records: React.FC<RecordsProps> = ({
         accountId: values.accountId,
         ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
         date: values.date.format('YYYY-MM-DD'),
+        title: values.title || '',
         note: values.note || '',
+        source: 'manual' as const,
         syncedAt: undefined,
         isDeleted: 0
       }
@@ -268,143 +233,6 @@ const Records: React.FC<RecordsProps> = ({
       message.error('操作失败，请重试')
     }
   }
-
-  // ---- AI inline helpers ----
-
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const result = reader.result as string
-        const base64 = result.split(',')[1] || result
-        resolve(base64)
-      }
-      reader.onerror = () => reject(new Error('文件读取失败'))
-      reader.readAsDataURL(file)
-    })
-  }
-
-  const handleAiSubmit = async (options: { text?: string; imageBase64?: string }) => {
-    const { text, imageBase64 } = options
-    if (!text && !imageBase64) {
-      message.error('请输入记账描述或上传图片')
-      return
-    }
-    if (getApiKeyStatus() === 'missing') {
-      message.error('请先在设置页配置智谱 API Key')
-      return
-    }
-    setAiLoading(true)
-    try {
-      const accountsForAI: AccountItem[] = accounts.map(a => ({
-        id: a.id, name: a.name, type: a.type,
-        cardNo: a.cardNo, bankName: a.bankName, holderName: a.holderName
-      }))
-      const categoriesForAI: CategoryItem[] = categories.map(c => ({
-        id: c.id!, name: c.name, type: c.type, icon: c.icon, color: c.color
-      }))
-      const recordInput = await analyzeAccounting({
-        text, imageBase64, accounts: accountsForAI, categories: categoriesForAI
-      })
-      await dispatch(addRecord({
-        amount: recordInput.amount,
-        type: recordInput.type,
-        categoryId: recordInput.categoryId ?? 0,
-        accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
-        ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
-        date: recordInput.date,
-        note: `🤖 ${recordInput.note}`,
-        createdAt: recordInput.time
-          ? `${recordInput.date}T${recordInput.time}`
-          : new Date().toISOString()
-      })).unwrap()
-      getApi().addLog("ai_record", `AI记账: ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categories.find(c => c.id === recordInput.categoryId)?.name} | ${accounts.find(a => a.id === recordInput.accountId)?.name}`)
-      const category = categories.find(c => c.id === recordInput.categoryId)
-      const account = accounts.find(a => a.id === recordInput.accountId)
-      message.success(`AI记账: ¥${recordInput.amount.toFixed(2)} · ${category?.name ?? '未分类'} - ${account?.name ?? '默认账户'}`)
-      setAiLoading(false)
-      setIsModalOpen(false)
-      dispatch(fetchRecords() as any)
-      dispatch(fetchAccounts() as any)
-    } catch (e) {
-      setAiLoading(false)
-      const errMsg = e instanceof Error ? e.message : String(e)
-      if (errMsg === 'NO_API_KEY') message.error('请先在设置页配置智谱 API Key')
-      else if (errMsg === 'AMOUNT_INVALID') message.error('未能识别有效金额，请重新描述')
-      else message.error('AI 识别失败，请重试')
-    }
-  }
-
-  const handleAiTextSubmit = () => {
-    if (!aiText.trim()) { message.error('请输入记账描述'); return }
-    handleAiSubmit({ text: aiText.trim() })
-  }
-
-  const handleAiScreenshotFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) { message.error('请选择图片文件'); return }
-    if (file.size > 10 * 1024 * 1024) { message.error('图片大小不能超过 10MB'); return }
-    readFileAsBase64(file).then(b64 => {
-      setAiImageBase64(b64)
-      setAiImagePreview(URL.createObjectURL(file))
-    }).catch(() => message.error('图片读取失败'))
-    if (aiFileInputRef.current) aiFileInputRef.current.value = ''
-  }
-
-  const handleAiScreenshotSubmit = () => {
-    if (!aiImageBase64) { message.error('请先上传图片'); return }
-    handleAiSubmit({ imageBase64: aiImageBase64 })
-  }
-
-  const resetAiScreenshot = () => {
-    setAiImageBase64(null)
-    if (aiImagePreview) URL.revokeObjectURL(aiImagePreview)
-    setAiImagePreview(null)
-  }
-
-  const startAiCamera = async () => {
-    try {
-      if (aiCameraStream) {
-        aiCameraStream.getTracks().forEach(t => t.stop())
-        setAiCameraStream(null)
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
-      })
-      setAiCameraStream(stream)
-      requestAnimationFrame(() => {
-        if (aiVideoRef.current) aiVideoRef.current.srcObject = stream
-      })
-    } catch { message.error('无法访问摄像头，请检查权限设置') }
-  }
-
-  const takeAiPhoto = () => {
-    const video = aiVideoRef.current
-    const canvas = aiCanvasRef.current
-    if (!video || !canvas) return
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.drawImage(video, 0, 0)
-    const jpegBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1]
-    setAiPhotoBase64(jpegBase64)
-    setAiPhotoPreview(canvas.toDataURL('image/jpeg', 0.9))
-  }
-
-  const handleAiCameraSubmit = () => {
-    if (!aiPhotoBase64) { message.error('请先拍照'); return }
-    handleAiSubmit({ imageBase64: aiPhotoBase64 })
-  }
-
-  const resetAiPhoto = () => {
-    setAiPhotoBase64(null)
-    if (aiPhotoPreview) URL.revokeObjectURL(aiPhotoPreview)
-    setAiPhotoPreview(null)
-  }
-
-  // ---- End AI helpers ----
 
   const handleRefund = (record: RecordType) => {
     setRefundTargetRecord(record)
@@ -476,6 +304,22 @@ const Records: React.FC<RecordsProps> = ({
     return <Tag color="gold" style={{ fontSize: 11, lineHeight: '18px' }}>部分退款</Tag>
   }
 
+  const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+    manual: { label: '手动', color: '#8c8c8c', icon: '✏️' },
+    ai_text: { label: 'AI文本', color: '#667eea', icon: '💬' },
+    ai_voice: { label: 'AI语音', color: '#faad14', icon: '🎙️' },
+    ai_image: { label: 'AI图片', color: '#13c2c2', icon: '📷' },
+  }
+
+  const renderSourceTag = (source?: string) => {
+    const cfg = SOURCE_CONFIG[source || 'manual'] || SOURCE_CONFIG.manual
+    return (
+      <span className="source-tag" style={{ background: cfg.color + '18', color: cfg.color, border: `1px solid ${cfg.color}30` }}>
+        {cfg.icon} {cfg.label}
+      </span>
+    )
+  }
+
   const renderAccountTag = (accountId: number) => {
     const acc = getAccountById(accountId)
     if (!acc) return null
@@ -486,12 +330,6 @@ const Records: React.FC<RecordsProps> = ({
         {icon} {acc.name}
       </span>
     )
-  }
-
-  const getAccountCardNo = (accountId: number) => {
-    const acc = getAccountById(accountId)
-    if (!acc || !acc.cardNo) return ''
-    return `尾号${acc.cardNo}`
   }
 
   const formatTime = (record: RecordType) => {
@@ -526,9 +364,14 @@ const Records: React.FC<RecordsProps> = ({
     })
     return (
       <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight">
-        <Button type="text" size="small" style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} icon={<EllipsisOutlined style={{ fontSize: 14 }} />} />
+        <Button type="text" size="small" onClick={(e) => e.stopPropagation()} style={{ width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} icon={<EllipsisOutlined style={{ fontSize: 18 }} />} />
       </Dropdown>
     )
+  }
+
+  const handleShowDetail = (record: RecordType) => {
+    setDetailRecord(record)
+    setDetailVisible(true)
   }
 
   const renderRecordItem = (record: RecordType) => {
@@ -536,39 +379,30 @@ const Records: React.FC<RecordsProps> = ({
 
     if (record.type === 'transfer') {
       return (
-        <List.Item className="record-item-transfer">
-          <List.Item.Meta
-            avatar={
-              <div style={{ width: 40, height: 52, borderRadius: 10, background: '#667eea20', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-                <SwapOutlined style={{ color: '#667eea', fontSize: 16 }} />
-                <span style={{ fontSize: 10, color: SECONDARY, lineHeight: 1 }}>转账</span>
-              </div>
-            }
-            title={
+        <List.Item className="record-item-transfer" style={{ cursor: 'pointer' }} onClick={() => handleShowDetail(record)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: '#667eea20', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <SwapOutlined style={{ color: '#667eea', fontSize: 16 }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
-                  {renderAccountTag(record.accountId)}
-                  <span style={{ color: TERTIARY, fontSize: 12 }}>→</span>
-                  {record.targetAccountId && renderAccountTag(record.targetAccountId)}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, marginLeft: 8 }}>
-                  <span style={{ color: '#667eea', fontSize: 13, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap' }}>¥{record.amount.toFixed(2)}</span>
-                  {renderActions(record, false)}
-                </div>
-              </div>
-            }
-            description={
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: NOTE_COLOR }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {record.note || '账户转账'}
-                  {record.fee ? <span style={{ color: '#faad14', marginLeft: 4 }}>手续费 ¥{record.fee.toFixed(2)}</span> : ''}
-                  {getAccountCardNo(record.accountId) ? <span style={{ marginLeft: 4 }}>· {getAccountCardNo(record.accountId)}</span> : ''}
-                  {record.targetAccountId && getAccountCardNo(record.targetAccountId) ? <span style={{ marginLeft: 4 }}>→ {getAccountCardNo(record.targetAccountId)}</span> : ''}
                 </span>
-                <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 8 }}>{timeStr}</span>
+                <span style={{ color: '#667eea', fontSize: 14, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', marginLeft: 8 }}>
+                  ¥{record.amount.toFixed(2)}
+                </span>
               </div>
-            }
-          />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                {renderAccountTag(record.accountId)}
+                <span style={{ color: TERTIARY, fontSize: 11 }}>→</span>
+                {record.targetAccountId && renderAccountTag(record.targetAccountId)}
+                {record.fee ? <span style={{ fontSize: 10, color: '#faad14' }}>手续费 ¥{record.fee.toFixed(2)}</span> : ''}
+                <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 'auto' }}>{timeStr}</span>
+              </div>
+            </div>
+            {renderActions(record, false)}
+          </div>
         </List.Item>
       )
     }
@@ -576,22 +410,21 @@ const Records: React.FC<RecordsProps> = ({
     const category = getCategoryById(record.categoryId)
     const isRefunded = record.refundStatus && record.refundStatus !== 'none'
     const effectiveAmount = getEffectiveAmount(record)
+    const coreContent = record.title || record.note || category?.name || '未分类'
 
     return (
-      <List.Item className={isRefunded ? 'record-item-refunded' : (record.type === 'expense' ? 'record-item-expense' : 'record-item-income')}>
-        <List.Item.Meta
-          avatar={
-            <div style={{ width: 40, height: 52, borderRadius: 10, background: (category?.color || '#667eea') + '20', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-              <span style={{ fontSize: 18, lineHeight: 1 }}>{category?.icon || '💸'}</span>
-              <span style={{ fontSize: 10, color: SECONDARY, lineHeight: 1, maxWidth: 38, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category?.name}</span>
-            </div>
-          }
-          title={
+      <List.Item className={isRefunded ? 'record-item-refunded' : (record.type === 'expense' ? 'record-item-expense' : 'record-item-income')} style={{ cursor: 'pointer' }} onClick={() => handleShowDetail(record)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+          <div style={{ width: 40, height: 52, borderRadius: 10, background: (category?.color || '#667eea') + '20', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0 }}>
+            <span style={{ fontSize: 18, lineHeight: 1 }}>{category?.icon || '💸'}</span>
+            <span style={{ fontSize: 10, color: SECONDARY, lineHeight: 1, maxWidth: 38, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category?.name}</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                 {getRefundTag(record)}
-                {renderAccountTag(record.accountId)}
-              </div>
+                {coreContent}
+              </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, marginLeft: 8 }}>
                 {isRefunded && record.refundAmount ? (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', whiteSpace: 'nowrap' }}>
@@ -600,7 +433,7 @@ const Records: React.FC<RecordsProps> = ({
                     </span>
                     <span style={{
                       color: record.type === 'income' ? '#52c41a' : '#ff4d4f',
-                      fontSize: 13, fontWeight: 700, fontFamily: 'Inter, monospace'
+                      fontSize: 14, fontWeight: 700, fontFamily: 'Inter, monospace'
                     }}>
                       {record.type === 'income' ? '+' : '-'}¥{effectiveAmount.toFixed(2)}
                     </span>
@@ -611,7 +444,7 @@ const Records: React.FC<RecordsProps> = ({
                 ) : (
                   <span style={{
                     color: record.type === 'income' ? '#52c41a' : '#ff4d4f',
-                    fontSize: 13, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap'
+                    fontSize: 14, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap'
                   }}>
                     {record.type === 'income' ? '+' : '-'}¥{record.amount.toFixed(2)}
                   </span>
@@ -619,18 +452,14 @@ const Records: React.FC<RecordsProps> = ({
                 {renderActions(record, !!isRefunded)}
               </div>
             </div>
-          }
-          description={
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: NOTE_COLOR }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
-                {record.note || '无备注'}
-                {isRefunded && record.refundNote ? ` · ${record.refundNote}` : ''}
-                {getAccountCardNo(record.accountId) ? ` · ${getAccountCardNo(record.accountId)}` : ''}
-              </span>
-              <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 8 }}>{timeStr}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+              {renderSourceTag(record.source)}
+              {renderAccountTag(record.accountId)}
+              {isRefunded && record.refundNote && <span style={{ fontSize: 10, color: '#faad14' }}>{record.refundNote}</span>}
+              <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 'auto' }}>{timeStr}</span>
             </div>
-          }
-        />
+          </div>
+        </div>
       </List.Item>
     )
   }
@@ -763,153 +592,66 @@ const Records: React.FC<RecordsProps> = ({
       <Modal
         title={editingRecord ? "编辑记录" : "添加记录"}
         open={isModalOpen}
-        onOk={addModalTab === 'manual' ? handleOk : undefined}
+        onOk={handleOk}
         onCancel={() => setIsModalOpen(false)}
-        okText={addModalTab === 'manual' ? "确定" : undefined}
+        okText="确定"
         cancelText="取消"
         width={520}
-        footer={addModalTab === 'manual' ? undefined : null}
       >
-        <Tabs activeKey={addModalTab} onChange={(k: string) => setAddModalTab(k as 'manual' | 'ai')}>
-          <Tabs.TabPane tab="手动记账" key="manual">
-            <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-              <Form.Item name="type" label="类型" rules={[{ required: true, message: '请选择类型' }]}>
-                <Select onChange={(value) => setRecordType(value)} size="large">
-                  <Option value="expense">💸 支出</Option>
-                  <Option value="income">💰 收入</Option>
+        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item name="type" label="类型" rules={[{ required: true, message: '请选择类型' }]}>
+            <Select onChange={(value) => setRecordType(value)} size="large">
+              <Option value="expense">💸 支出</Option>
+              <Option value="income">💰 收入</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="title" label={recordType === 'income' ? '收入记录' : '支出记录'} rules={[{ required: true, message: recordType === 'income' ? '请输入收入记录' : '请输入支出记录' }]}>
+            <Input placeholder={recordType === 'income' ? '如：5月工资、项目奖金等' : '如：午餐-黄焖鸡、地铁通勤等'} size="large" />
+          </Form.Item>
+          <Form.Item name="amount" label="金额" rules={[{ required: true, message: '请输入金额' }]}>
+            <InputNumber style={{ width: '100%' }} placeholder="请输入金额" precision={2} min={0.01} size="large" prefix="¥" />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="categoryId" label="分类" rules={[{ required: true, message: '请选择分类' }]}>
+                <Select placeholder="选择分类" size="large">
+                  {filteredCategories.map(category => (<Option key={category.id} value={category.id}>{category.icon} {category.name}</Option>))}
                 </Select>
               </Form.Item>
-              <Form.Item name="amount" label="金额" rules={[{ required: true, message: '请输入金额' }]}>
-                <InputNumber style={{ width: '100%' }} placeholder="请输入金额" precision={2} min={0.01} size="large" prefix="¥" />
+            </Col>
+            <Col span={12}>
+              <Form.Item name="accountId" label="账户" rules={[{ required: true, message: '请选择账户' }]}>
+                <Select placeholder="选择账户" size="large">
+                  {Object.entries(accountsByType).map(([type, accs]) => (
+                    <Select.OptGroup key={type} label={`${ACCOUNT_TYPE_ICONS[type] || '💰'} ${ACCOUNT_TYPE_LABELS[type] || type}`}>
+                      {accs.map(acc => (<Option key={acc.id} value={acc.id}>{acc.name}{acc.cardNo ? ` (尾号${acc.cardNo})` : ''}{acc.bankName ? ` - ${acc.bankName}` : ''}</Option>))}
+                    </Select.OptGroup>
+                  ))}
+                </Select>
               </Form.Item>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="categoryId" label="分类" rules={[{ required: true, message: '请选择分类' }]}>
-                    <Select placeholder="选择分类" size="large">
-                      {filteredCategories.map(category => (<Option key={category.id} value={category.id}>{category.icon} {category.name}</Option>))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="accountId" label="账户" rules={[{ required: true, message: '请选择账户' }]}>
-                    <Select placeholder="选择账户" size="large">
-                      {Object.entries(accountsByType).map(([type, accs]) => (
-                        <Select.OptGroup key={type} label={`${ACCOUNT_TYPE_ICONS[type] || '💰'} ${ACCOUNT_TYPE_LABELS[type] || type}`}>
-                          {accs.map(acc => (<Option key={acc.id} value={acc.id}>{acc.name}{acc.cardNo ? ` (尾号${acc.cardNo})` : ''}{acc.bankName ? ` - ${acc.bankName}` : ''}</Option>))}
-                        </Select.OptGroup>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="date" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
-                    <DatePicker style={{ width: '100%' }} size="large" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="time" label="时间" rules={[{ required: true, message: '请选择时间' }]}>
-                    <TimePicker style={{ width: '100%' }} size="large" format="HH:mm:ss" />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item name="note" label="备注">
-                <TextArea rows={2} placeholder="添加备注（可选）" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="date" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
+                <DatePicker style={{ width: '100%' }} size="large" />
               </Form.Item>
-            </Form>
-          </Tabs.TabPane>
-          <Tabs.TabPane tab="🤖 AI 记账" key="ai">
-            <div style={{ marginTop: 16 }}>
-              <Segmented
-                block
-                value={aiMode}
-                onChange={(v) => setAiMode(v as any)}
-                options={[
-                  { label: '💬 文字', value: 'text' },
-                  { label: '📷 截图', value: 'screenshot' },
-                  { label: '📸 拍照', value: 'camera' },
-                ]}
-                style={{ marginBottom: 16 }}
-              />
-              {aiMode === 'text' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <TextArea
-                    rows={4}
-                    placeholder="描述你的消费，例如：午餐买了一份黄焖鸡35元用微信支付"
-                    value={aiText}
-                    onChange={e => setAiText(e.target.value)}
-                    disabled={aiLoading}
-                  />
-                  <Button
-                    type="primary"
-                    icon={<SendOutlined />}
-                    onClick={handleAiTextSubmit}
-                    loading={aiLoading}
-                    block
-                  >
-                    AI 识别记账
-                  </Button>
-                </div>
-              )}
-              {aiMode === 'screenshot' && (
-                aiImagePreview && aiImageBase64 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-                    <img src={aiImagePreview} alt="截图预览" style={{ maxWidth: '100%', maxHeight: 300, borderRadius: 8, objectFit: 'contain' }} />
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Button icon={<ReloadOutlined />} onClick={resetAiScreenshot} disabled={aiLoading}>重新选择</Button>
-                      <Button type="primary" icon={<SendOutlined />} onClick={handleAiScreenshotSubmit} loading={aiLoading}>AI 识别</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      const file = e.dataTransfer.files?.[0]
-                      if (!file) return
-                      if (!file.type.startsWith('image/')) { message.error('请拖入图片文件'); return }
-                      if (file.size > 10 * 1024 * 1024) { message.error('图片大小不能超过 10MB'); return }
-                      readFileAsBase64(file).then(b64 => {
-                        setAiImageBase64(b64)
-                        setAiImagePreview(URL.createObjectURL(file))
-                      }).catch(() => message.error('图片读取失败'))
-                    }}
-                    style={{ border: '2px dashed #d9d9d9', borderRadius: 8, padding: '32px 20px', textAlign: 'center', cursor: 'pointer', background: 'rgba(0,0,0,0.02)' }}
-                    onClick={() => aiFileInputRef.current?.click()}
-                  >
-                    <PictureOutlined style={{ fontSize: 40, color: '#bfbfbf', marginBottom: 12 }} />
-                    <div style={{ fontSize: 14, color: '#8c8c8c' }}>点击上传或拖拽图片</div>
-                    <input ref={aiFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAiScreenshotFile} />
-                  </div>
-                )
-              )}
-              {aiMode === 'camera' && (
-                aiPhotoPreview && aiPhotoBase64 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-                    <img src={aiPhotoPreview} alt="拍照预览" style={{ maxWidth: '100%', maxHeight: 300, borderRadius: 8, objectFit: 'contain' }} />
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Button icon={<ReloadOutlined />} onClick={resetAiPhoto} disabled={aiLoading}>重新拍摄</Button>
-                      <Button type="primary" icon={<SendOutlined />} onClick={handleAiCameraSubmit} loading={aiLoading}>AI 识别</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-                    <div style={{ width: '100%', maxWidth: 400, borderRadius: 8, overflow: 'hidden', background: '#000' }}>
-                      <video ref={aiVideoRef} autoPlay playsInline style={{ width: '100%', display: 'block' }} />
-                    </div>
-                    <canvas ref={aiCanvasRef} style={{ display: 'none' }} />
-                    {!aiCameraStream ? (
-                      <Button type="primary" icon={<CameraOutlined />} onClick={startAiCamera} size="large">打开摄像头</Button>
-                    ) : (
-                      <Button type="primary" icon={<CameraOutlined />} onClick={takeAiPhoto} size="large" disabled={aiLoading}>拍照</Button>
-                    )}
-                  </div>
-                )
-              )}
-            </div>
-          </Tabs.TabPane>
-        </Tabs>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="time" label="时间" rules={[{ required: true, message: '请选择时间' }]}>
+                <TimePicker style={{ width: '100%' }} size="large" format="HH:mm:ss" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="note" label="备注" extra="记录补充信息、AI识别结果等">
+            <TextArea rows={2} placeholder="添加备注（可选）" />
+          </Form.Item>
+          {editingRecord?.rawFilePath && (
+            <Form.Item label="附件路径">
+              <Input value={editingRecord.rawFilePath} disabled size="large" />
+            </Form.Item>
+          )}
+        </Form>
       </Modal>
 
       <Modal
@@ -928,7 +670,7 @@ const Records: React.FC<RecordsProps> = ({
           <Form.Item name="refundAmount" label="退款金额" rules={[{ required: true, message: '请输入退款金额' }]}>
             <InputNumber style={{ width: '100%' }} placeholder="请输入退款金额" precision={2} min={0.01} max={refundTargetRecord?.amount} size="large" prefix="¥" />
           </Form.Item>
-          <Form.Item name="shippingFee" label="退货运费（默认免运费）">
+          <Form.Item name="shippingFee" label="退款运费或手续费（默认为0）">
             <InputNumber style={{ width: '100%' }} placeholder="0.00" precision={2} min={0} size="large" prefix="¥" />
           </Form.Item>
           <Form.Item name="refundNote" label="退款备注">
@@ -936,6 +678,17 @@ const Records: React.FC<RecordsProps> = ({
           </Form.Item>
         </Form>
       </Modal>
+
+      <RecordDetailModal
+        open={detailVisible}
+        record={detailRecord}
+        onClose={() => setDetailVisible(false)}
+        accounts={accounts}
+        categories={categories}
+        onEdit={(record) => { setDetailVisible(false); handleEdit(record) }}
+        onDelete={(id) => handleDelete(id)}
+        onRefund={(record) => { setDetailVisible(false); handleRefund(record) }}
+      />
     </div>
   )
 }

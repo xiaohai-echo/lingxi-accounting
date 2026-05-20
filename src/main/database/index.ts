@@ -220,11 +220,72 @@ function runMigrations() {
     "ALTER TABLE records ADD COLUMN refund_note TEXT",
     "ALTER TABLE records ADD COLUMN refund_date TEXT",
     "ALTER TABLE budgets ADD COLUMN ledger_id INTEGER",
+    "ALTER TABLE records ADD COLUMN title TEXT",
+    "ALTER TABLE records ADD COLUMN raw_file_path TEXT",
+    "ALTER TABLE records ADD COLUMN transfer_type TEXT",
+    "ALTER TABLE records ADD COLUMN source TEXT",
   ]
 
   for (const sql of migrations) {
     try { db.run(sql) } catch { /* Column/table already exists */ }
   }
+
+  const transferCount = db.exec("SELECT COUNT(*) as count FROM categories WHERE type = 'transfer'")
+  if (transferCount.length === 0 || transferCount[0].values[0][0] === 0) {
+    const now = new Date().toISOString()
+    const transferCategories = [
+      { name: '微信转账', icon: '💬', color: '#07C160' },
+      { name: '支付宝转账', icon: '🔷', color: '#1677FF' },
+      { name: '银行卡转账', icon: '🏦', color: '#667eea' },
+      { name: '红包转账', icon: '🧧', color: '#FF4500' },
+      { name: '亲友转账', icon: '👨‍👩‍👧', color: '#F39C12' },
+      { name: '微信充值', icon: '💚', color: '#52C41A' },
+      { name: '支付宝充值', icon: '🔵', color: '#1890FF' },
+      { name: '提现到银行卡', icon: '🏧', color: '#722ED1' },
+      { name: '信用卡还款', icon: '💳', color: '#EB2F96' },
+      { name: '花呗还款', icon: '🌸', color: '#FF85C0' },
+      { name: '借呗还款', icon: '📋', color: '#FAAD14' },
+      { name: '房贷还款', icon: '🏠', color: '#F39C12' },
+      { name: '车贷还款', icon: '🚗', color: '#4ECDC4' },
+      { name: '其他', icon: '🔀', color: '#9E9E9E' },
+    ]
+    const maxSort = db.exec("SELECT MAX(sort_order) FROM categories")
+    let sortOrder = (maxSort.length > 0 && maxSort[0].values[0][0] != null) ? (maxSort[0].values[0][0] as number) + 1 : 0
+    const stmt = db.prepare("INSERT INTO categories (name, type, icon, color, is_default, sort_order, is_deleted, created_at, updated_at) VALUES (?, 'transfer', ?, ?, 1, ?, 0, ?, ?)")
+    for (const c of transferCategories) {
+      stmt.run([c.name, c.icon, c.color, sortOrder, now, now])
+      sortOrder++
+    }
+    stmt.free()
+  } else {
+    const existingNames = new Set<string>()
+    const existingRows = db.exec("SELECT name FROM categories WHERE type = 'transfer'")
+    if (existingRows.length > 0) {
+      for (const row of existingRows[0].values) {
+        existingNames.add(row as string)
+      }
+    }
+    const missingCategories = [
+      { name: '信用卡还款', icon: '💳', color: '#EB2F96' },
+      { name: '花呗还款', icon: '🌸', color: '#FF85C0' },
+      { name: '借呗还款', icon: '📋', color: '#FAAD14' },
+      { name: '房贷还款', icon: '🏠', color: '#F39C12' },
+      { name: '车贷还款', icon: '🚗', color: '#4ECDC4' },
+    ].filter(c => !existingNames.has(c.name))
+
+    if (missingCategories.length > 0) {
+      const now = new Date().toISOString()
+      const maxSort = db.exec("SELECT MAX(sort_order) FROM categories")
+      let sortOrder = (maxSort.length > 0 && maxSort[0].values[0][0] != null) ? (maxSort[0].values[0][0] as number) + 1 : 0
+      const stmt = db.prepare("INSERT INTO categories (name, type, icon, color, is_default, sort_order, is_deleted, created_at, updated_at) VALUES (?, 'transfer', ?, ?, 1, ?, 0, ?, ?)")
+      for (const c of missingCategories) {
+        stmt.run([c.name, c.icon, c.color, sortOrder, now, now])
+        sortOrder++
+      }
+      stmt.free()
+    }
+  }
+
   saveDatabase()
 }
 
@@ -274,7 +335,21 @@ function seedInitialData() {
       { name: '报销', type: 'income', icon: '📋', color: '#8BC34A' },
       { name: '租金', type: 'income', icon: '🔑', color: '#FF9800' },
       { name: '退款', type: 'income', icon: '↩️', color: '#00BCD4' },
-      { name: '其他收入', type: 'income', icon: '📥', color: '#7F8C8D' }
+      { name: '其他收入', type: 'income', icon: '📥', color: '#7F8C8D' },
+      { name: '微信转账', type: 'transfer', icon: '💬', color: '#07C160' },
+      { name: '支付宝转账', type: 'transfer', icon: '🔷', color: '#1677FF' },
+      { name: '银行卡转账', type: 'transfer', icon: '🏦', color: '#667eea' },
+      { name: '红包转账', type: 'transfer', icon: '🧧', color: '#FF4500' },
+      { name: '亲友转账', type: 'transfer', icon: '👨‍👩‍👧', color: '#F39C12' },
+      { name: '微信充值', type: 'transfer', icon: '💚', color: '#52C41A' },
+      { name: '支付宝充值', type: 'transfer', icon: '🔵', color: '#1890FF' },
+      { name: '提现到银行卡', type: 'transfer', icon: '🏧', color: '#722ED1' },
+      { name: '信用卡还款', type: 'transfer', icon: '💳', color: '#EB2F96' },
+      { name: '花呗还款', type: 'transfer', icon: '🌸', color: '#FF85C0' },
+      { name: '借呗还款', type: 'transfer', icon: '📋', color: '#FAAD14' },
+      { name: '房贷还款', type: 'transfer', icon: '🏠', color: '#F39C12' },
+      { name: '车贷还款', type: 'transfer', icon: '🚗', color: '#4ECDC4' },
+      { name: '其他', type: 'transfer', icon: '🔀', color: '#9E9E9E' },
     ]
 
     const insertStmt = db.prepare(
@@ -363,7 +438,11 @@ function mapRecordRow(row: any[]): Record {
     createdAt: row[17] as string,
     updatedAt: row[18] as string,
     syncedAt: row[19] as string,
-    isDeleted: row[20] as number
+    isDeleted: row[20] as number,
+    title: (row[21] ?? undefined) as string | undefined,
+    rawFilePath: (row[22] ?? undefined) as string | undefined,
+    transferType: (row[23] ?? undefined) as 'transfer' | 'withdraw' | 'recharge' | undefined,
+    source: (row[24] ?? undefined) as 'manual' | 'ai_text' | 'ai_voice' | 'ai_image' | undefined,
   }
 }
 
@@ -384,7 +463,7 @@ export function getRecords(ledgerId?: number): Record[] {
 export function addRecord(record: Omit<Record, 'id' | 'createdAt' | 'updatedAt'>): number {
   const now = new Date().toISOString()
   const stmt = db.prepare(
-    'INSERT INTO records (amount, type, category_id, account_id, target_account_id, fee, ledger_id, date, note, tags, attachment, refund_status, refund_amount, shipping_fee, refund_note, refund_date, created_at, updated_at, synced_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0)'
+    'INSERT INTO records (amount, type, category_id, account_id, target_account_id, fee, ledger_id, date, note, tags, attachment, refund_status, refund_amount, shipping_fee, refund_note, refund_date, created_at, updated_at, synced_at, is_deleted, title, raw_file_path, transfer_type, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, ?)'
   )
   stmt.run([
     record.amount, record.type, record.categoryId, record.accountId,
@@ -392,7 +471,9 @@ export function addRecord(record: Omit<Record, 'id' | 'createdAt' | 'updatedAt'>
     record.date, record.note ?? '', record.tags ?? '', record.attachment ?? '',
     record.refundStatus || 'none', record.refundAmount ?? 0,
     record.shippingFee ?? 0, record.refundNote ?? null, record.refundDate ?? null,
-    now, now
+    now, now,
+    record.title ?? null, record.rawFilePath ?? null,
+    record.transferType ?? null, record.source ?? null,
   ])
   stmt.free()
 
@@ -440,6 +521,10 @@ export function updateRecord(id: number, record: Partial<Omit<Record, 'id' | 'cr
   if (record.shippingFee !== undefined) { setClauses.push('shipping_fee = ?'); values.push(record.shippingFee) }
   if (record.refundNote !== undefined) { setClauses.push('refund_note = ?'); values.push(record.refundNote) }
   if (record.refundDate !== undefined) { setClauses.push('refund_date = ?'); values.push(record.refundDate) }
+  if (record.title !== undefined) { setClauses.push('title = ?'); values.push(record.title) }
+  if (record.rawFilePath !== undefined) { setClauses.push('raw_file_path = ?'); values.push(record.rawFilePath) }
+  if (record.transferType !== undefined) { setClauses.push('transfer_type = ?'); values.push(record.transferType) }
+  if (record.source !== undefined) { setClauses.push('source = ?'); values.push(record.source) }
   if ((record as any).syncedAt !== undefined) { setClauses.push('synced_at = ?'); values.push((record as any).syncedAt) }
 
   values.push(id)
@@ -607,7 +692,7 @@ function mapCategoryRow(row: any[]): Category {
   return {
     id: row[0] as number,
     name: row[1] as string,
-    type: row[2] as 'income' | 'expense',
+    type: row[2] as 'income' | 'expense' | 'transfer',
     icon: row[3] as string,
     color: row[4] as string,
     ledgerId: (row[5] ?? undefined) as number | undefined,
@@ -945,8 +1030,8 @@ export function importData(jsonData: string): { success: boolean; message: strin
       stmt.free()
     }
     if (data.records && Array.isArray(data.records)) {
-      const stmt = db.prepare('INSERT OR REPLACE INTO records (id, amount, type, category_id, account_id, target_account_id, fee, ledger_id, date, note, tags, attachment, refund_status, refund_amount, shipping_fee, refund_note, refund_date, created_at, updated_at, synced_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      data.records.forEach((r: any) => stmt.run([r.id, r.amount, r.type, r.categoryId, r.accountId, r.targetAccountId ?? null, r.fee ?? 0, r.ledgerId ?? null, r.date, r.note ?? '', r.tags ?? '', r.attachment ?? '', r.refundStatus || 'none', r.refundAmount ?? 0, r.shippingFee ?? 0, r.refundNote ?? null, r.refundDate ?? null, r.createdAt, r.updatedAt, r.syncedAt ?? null, r.isDeleted ?? 0]))
+      const stmt = db.prepare('INSERT OR REPLACE INTO records (id, amount, type, category_id, account_id, target_account_id, fee, ledger_id, date, note, tags, attachment, refund_status, refund_amount, shipping_fee, refund_note, refund_date, created_at, updated_at, synced_at, is_deleted, title, raw_file_path, transfer_type, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      data.records.forEach((r: any) => stmt.run([r.id, r.amount, r.type, r.categoryId, r.accountId, r.targetAccountId ?? null, r.fee ?? 0, r.ledgerId ?? null, r.date, r.note ?? '', r.tags ?? '', r.attachment ?? '', r.refundStatus || 'none', r.refundAmount ?? 0, r.shippingFee ?? 0, r.refundNote ?? null, r.refundDate ?? null, r.createdAt, r.updatedAt, r.syncedAt ?? null, r.isDeleted ?? 0, r.title ?? null, r.rawFilePath ?? null, r.transferType ?? null, r.source ?? null]))
       stmt.free()
     }
     if (data.budgets && Array.isArray(data.budgets)) {

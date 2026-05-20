@@ -18,3 +18,18 @@ export const ACCOUNT_GRADIENTS: Record<string, string[]> = {
   credit: ['#FF6B6B', '#EE5A24'],
   other: ['#667eea', '#764ba2']
 }
+
+export function getDefaultAccountId(): number | null {
+  const stored = localStorage.getItem('default_account_id')
+  if (!stored) return null
+  const id = Number(stored)
+  return isNaN(id) ? null : id
+}
+
+export function setDefaultAccountId(id: number | null): void {
+  if (id === null) {
+    localStorage.removeItem('default_account_id')
+  } else {
+    localStorage.setItem('default_account_id', String(id))
+  }
+}

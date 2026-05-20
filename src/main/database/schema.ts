@@ -25,6 +25,7 @@ export interface Record {
   categoryId: number
   accountId: number
   targetAccountId?: number
+  transferType?: 'transfer' | 'withdraw' | 'recharge'
   fee?: number
   refundStatus?: 'none' | 'partial' | 'full'
   refundAmount?: number
@@ -33,9 +34,12 @@ export interface Record {
   refundDate?: string
   ledgerId?: number
   date: string
+  title?: string
   note?: string
+  rawFilePath?: string
   tags?: string
   attachment?: string
+  source?: 'manual' | 'ai_text' | 'ai_voice' | 'ai_image'
   createdAt?: string
   updatedAt?: string
   syncedAt?: string
@@ -63,7 +67,7 @@ export interface Account {
 export interface Category {
   id?: number
   name: string
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'transfer'
   icon?: string
   color?: string
   ledgerId?: number

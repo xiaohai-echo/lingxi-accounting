@@ -36,12 +36,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
   const [categoryChartType, setCategoryChartType] = useState<'pie' | 'bar'>('pie')
   const [accountChartType, setAccountChartType] = useState<'pie' | 'bar'>('pie')
   const dispatch = useDispatch<AppDispatch>()
+  const [aiCardCollapsed, setAiCardCollapsed] = useState(true)
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiMode, setAiMode] = useState<AIMode>('text')
 
   const SECONDARY = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)'
   const TERTIARY = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)'
-  const NOTE_COLOR = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
 
   const today = dayjs().format('YYYY-MM-DD')
   const thisMonth = dayjs().month()
@@ -138,6 +138,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
     return (
       <span className="payment-tag" style={{ background: bgColor + '22', color: bgColor, border: `1px solid ${bgColor}33` }}>
         {icon} {account.name}
+      </span>
+    )
+  }
+
+  const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+    manual: { label: '手动', color: '#8c8c8c', icon: '✏️' },
+    ai_text: { label: 'AI文本', color: '#667eea', icon: '💬' },
+    ai_voice: { label: 'AI语音', color: '#faad14', icon: '🎙️' },
+    ai_image: { label: 'AI图片', color: '#13c2c2', icon: '📷' },
+  }
+
+  const renderSourceTag = (source?: string) => {
+    const cfg = SOURCE_CONFIG[source || 'manual'] || SOURCE_CONFIG.manual
+    return (
+      <span className="source-tag" style={{ background: cfg.color + '18', color: cfg.color, border: `1px solid ${cfg.color}30` }}>
+        {cfg.icon} {cfg.label}
       </span>
     )
   }
@@ -329,7 +345,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
 
       <Card
         title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => setAiCardCollapsed(!aiCardCollapsed)}>
             <span style={{
               width: 28, height: 28, borderRadius: 8,
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -337,6 +353,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
               fontSize: 14, color: '#fff'
             }}>🤖</span>
             <span style={{ fontWeight: 600 }}>AI 智能记账</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke={isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.35)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.25s', transform: aiCardCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </div>
         }
         extra={
@@ -347,33 +366,39 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
             onClick={() => onQuickRecord ? onQuickRecord() : onNavigate?.('2')}
             style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none' }}
           >
-            手动记账
+            记账
           </Button>
         }
-        styles={{ body: { padding: '16px 20px' } }}
+        styles={{ body: { padding: aiCardCollapsed ? 0 : '20px 20px', overflow: 'hidden', transition: 'padding 0.25s' } }}
         style={{ marginBottom: 24, borderColor: 'rgba(102,126,234,0.2)' }}
       >
-        <Row gutter={[16, 12]}>
+        <div style={{ display: aiCardCollapsed ? 'none' : 'flex', gap: 14 }}>
           {[
+            { key: 'manual' as const, icon: '✏️', label: '手动记账', desc: '手动填写记录', color: '#8c8c8c', bg: 'rgba(140,140,140,0.08)' },
             { key: 'text' as AIMode, icon: '💬', label: '文本记账', desc: '输入文字智能识别', color: '#667eea', bg: 'rgba(102,126,234,0.08)' },
+            { key: 'voice' as AIMode, icon: '🎤', label: '语音记账', desc: '语音输入记账', color: '#f5222d', bg: 'rgba(245,34,45,0.08)' },
             { key: 'screenshot' as AIMode, icon: '📷', label: '截图记账', desc: '截取屏幕识别', color: '#52c41a', bg: 'rgba(82,196,26,0.08)' },
             { key: 'camera' as AIMode, icon: '📸', label: '拍照识别', desc: '拍照自动记账', color: '#fa8c16', bg: 'rgba(250,140,22,0.08)' },
-            { key: 'voice' as AIMode, icon: '🎤', label: '语音记账', desc: '语音输入记账', color: '#f5222d', bg: 'rgba(245,34,45,0.08)' },
           ].map(btn => (
-            <Col xs={12} sm={12} md={6} key={btn.key}>
-              <Card hoverable
-                className="ai-mode-card"
-                style={{ borderColor: btn.color, borderWidth: 1, background: btn.bg, textAlign: 'center' }}
-                styles={{ body: { padding: '16px 12px' } }}
-                onClick={() => { setAiMode(btn.key); setAiModalOpen(true) }}
-              >
-                <div style={{ fontSize: 28, marginBottom: 6 }}>{btn.icon}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: btn.color, marginBottom: 2 }}>{btn.label}</div>
-                <div style={{ fontSize: 11, color: TERTIARY }}>{btn.desc}</div>
-              </Card>
-            </Col>
+            <Card hoverable
+              key={btn.key}
+              className="ai-mode-card"
+              style={{ borderColor: btn.color, borderWidth: 1, background: btn.bg, textAlign: 'center', flex: 1, minWidth: 0 }}
+              styles={{ body: { padding: '10px 6px' } }}
+              onClick={() => {
+                if (btn.key === 'manual') {
+                  onQuickRecord ? onQuickRecord() : onNavigate?.('2')
+                } else {
+                  setAiMode(btn.key as AIMode)
+                  setAiModalOpen(true)
+                }
+              }}
+            >
+              <div style={{ fontSize: 20, marginBottom: 2 }}>{btn.icon}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: btn.color }}>{btn.label}</div>
+            </Card>
           ))}
-        </Row>
+        </div>
       </Card>
 
       <Card
@@ -556,37 +581,33 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onQuickRecord, isDark
               locale={{ emptyText: <span style={{ color: SECONDARY }}>暂无记录</span> }}
               renderItem={(record) => {
                 const category = getCategoryById(record.categoryId)
+                const isRefunded = record.refundStatus && record.refundStatus !== 'none'
+                const coreContent = record.title || record.note || category?.name || '未分类'
+                const timeStr = record.createdAt ? dayjs(record.createdAt).format('HH:mm') : ''
                 return (
-                  <List.Item className={record.type === 'expense' ? (record.refundStatus && record.refundStatus !== 'none' ? 'record-item-refunded' : 'record-item-expense') : 'record-item-income'}>
-                    <List.Item.Meta
-                      avatar={
-                        <div style={{ width: 44, height: 44, borderRadius: 12, background: (category?.color || '#667eea') + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
-                          {category?.icon || '💸'}
-                        </div>
-                      }
-                      title={
+                  <List.Item className={isRefunded ? 'record-item-refunded' : (record.type === 'expense' ? 'record-item-expense' : 'record-item-income')}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+                      <div style={{ width: 40, height: 52, borderRadius: 10, background: (category?.color || '#667eea') + '20', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0 }}>
+                        <span style={{ fontSize: 18, lineHeight: 1 }}>{category?.icon || '💸'}</span>
+                        <span style={{ fontSize: 10, color: SECONDARY, lineHeight: 1, maxWidth: 38, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{category?.name}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontWeight: 600, fontSize: 14 }}>{category?.name}</span>
-                            {record.refundStatus && record.refundStatus !== 'none' && (
-                              <span style={{ fontSize: 11, color: '#faad14' }}>
-                                {record.refundStatus === 'full' ? '(已退款)' : '(部分退款)'}
-                              </span>
-                            )}
-                            {renderPaymentTag(record.accountId)}
-                          </div>
-                          <span style={{ color: record.type === 'income' ? '#52c41a' : '#ff4d4f', fontSize: 16, fontWeight: 700, fontFamily: 'Inter, monospace' }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                            {coreContent}
+                            {isRefunded && <span style={{ fontSize: 11, color: '#faad14', marginLeft: 6 }}>{record.refundStatus === 'full' ? '(已退款)' : '(部分退款)'}</span>}
+                          </span>
+                          <span style={{ color: record.type === 'income' ? '#52c41a' : '#ff4d4f', fontSize: 14, fontWeight: 700, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', marginLeft: 8 }}>
                             {record.type === 'income' ? '+' : '-'}¥{getEffectiveAmount(record).toFixed(2)}
                           </span>
                         </div>
-                      }
-                      description={
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: 13, color: NOTE_COLOR, fontWeight: record.note ? 500 : 400 }}>{record.note || '无备注'}</span>
-                          <span style={{ fontSize: 13, color: TERTIARY }}>{record.date} {record.createdAt ? dayjs(record.createdAt).format('HH:mm:ss') : ''}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                          {renderSourceTag(record.source)}
+                          {renderPaymentTag(record.accountId)}
+                          <span style={{ color: TERTIARY, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 'auto' }}>{timeStr}</span>
                         </div>
-                      }
-                    />
+                      </div>
+                    </div>
                   </List.Item>
                 )
               }}

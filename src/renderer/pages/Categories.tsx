@@ -5,7 +5,6 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
 import { addCategory, updateCategory, deleteCategory } from '../store/slices/categoriesSlice'
-import { deleteRecord } from '../store/slices/recordsSlice'
 import type { Category, Record as RecordType } from '../../main/database/schema'
 import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_COLORS } from '../utils/constants'
 
@@ -29,9 +28,8 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
   const SUBTLE = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'
   const CARD_BG = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
   const CARD_BORDER = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
-  const NOTE_COLOR = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
 
-  const PRESET_ICONS = ['🍜','🚗','🛒','🎮','🏠','🏥','📚','📱','👗','🧴','🎁','⚡','💻','🏃','💇','🐱','✈️','🍺','📎','📦','💰','🎉','📈','💼','🏦','🧧','📋','🔑','↩️','📥','☕','🍕','💊','🎬','🎵','🌸','📖','🎓','🎂','🔥']
+  const PRESET_ICONS = ['🍜','🚗','🛒','🎮','🏠','🏥','📚','📱','👗','🧴','🎁','⚡','💻','🏃','💇','🐱','✈️','🍺','📎','📦','💰','🎉','📈','💼','🏦','🧧','📋','🔑','↩️','📥','☕','🍕','💊','🎬','🎵','🌸','📖','🎓','🎂','🔥','🔄','💳','🏧','🔀']
   const [selectedIcon, setSelectedIcon] = useState('')
   const [customIcon, setCustomIcon] = useState('')
 
@@ -43,8 +41,25 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
 
   const expenseCategories = categories.filter(c => c.type === 'expense')
   const incomeCategories = categories.filter(c => c.type === 'income')
+  const transferCategories = categories.filter(c => c.type === 'transfer')
 
   const getAccountById = (id: number) => accounts.find(a => a.id === id)
+
+  const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+    manual: { label: '手动', color: '#8c8c8c', icon: '✏️' },
+    ai_text: { label: 'AI文本', color: '#667eea', icon: '💬' },
+    ai_voice: { label: 'AI语音', color: '#faad14', icon: '🎙️' },
+    ai_image: { label: 'AI图片', color: '#13c2c2', icon: '📷' },
+  }
+
+  const renderSourceTag = (source?: string) => {
+    const cfg = SOURCE_CONFIG[source || 'manual'] || SOURCE_CONFIG.manual
+    return (
+      <span className="source-tag" style={{ background: cfg.color + '18', color: cfg.color, border: `1px solid ${cfg.color}30` }}>
+        {cfg.icon} {cfg.label}
+      </span>
+    )
+  }
 
   const renderAccountTag = (accountId: number) => {
     const acc = getAccountById(accountId)
@@ -80,14 +95,14 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
     }, 0)
   }, [selectedCategory, categoryRecords])
 
-  const handleAdd = (type: 'income' | 'expense') => {
+  const handleAdd = (type: 'income' | 'expense' | 'transfer') => {
     setEditingCategory(null)
     setSelectedIcon('')
     setCustomIcon('')
     form.resetFields()
     form.setFieldsValue({
       type,
-      color: type === 'expense' ? '#ff4d4f' : '#52c41a',
+      color: type === 'expense' ? '#ff4d4f' : type === 'income' ? '#52c41a' : '#667eea',
       sortOrder: categories.length,
       icon: ''
     })
@@ -150,81 +165,60 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
     setRecordsVisible(true)
   }
 
-  const handleDeleteRecord = async (id: number) => {
-    try {
-      await dispatch(deleteRecord(id)).unwrap()
-      message.success('记录删除成功！')
-    } catch (error) {
-      message.error('删除失败，请重试')
-    }
-  }
-
   const renderRecordForCategory = (record: RecordType) => {
     const isRefunded = record.refundStatus && record.refundStatus !== 'none'
     const effectiveAmount = record.type === 'expense' && record.refundAmount
       ? Math.max(0, record.amount - record.refundAmount + (record.shippingFee || 0))
       : record.amount
+    const coreContent = record.title || record.note || selectedCategory?.name || '未分类'
 
     return (
       <List.Item
-        actions={[
-          <Popconfirm
-            title="确定要删除这条记录吗？"
-            onConfirm={() => handleDeleteRecord(record.id!)}
-            okText="确定" cancelText="取消"
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
-        ]}
       >
-        <List.Item.Meta
-          avatar={
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: (selectedCategory?.color || '#667eea') + '20',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16
-            }}>
-              {selectedCategory?.icon || '💸'}
-            </div>
-          }
-          title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+          <div style={{
+            width: 36, height: 48, borderRadius: 10,
+            background: (selectedCategory?.color || '#667eea') + '20',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0
+          }}>
+            <span style={{ fontSize: 16, lineHeight: 1 }}>{selectedCategory?.icon || '💸'}</span>
+            <span style={{ fontSize: 9, color: SUBTLE, lineHeight: 1, maxWidth: 34, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedCategory?.name}</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>
-                  {record.note || selectedCategory?.name || '未知'}
-                </span>
-                {renderAccountTag(record.accountId)}
-                {isRefunded && <span style={{ fontSize: 11, color: '#faad14' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                {coreContent}
+                {isRefunded && <span style={{ fontSize: 11, color: '#faad14', marginLeft: 6 }}>
                   {record.refundStatus === 'full' ? '(已退款)' : '(部分退款)'}
                 </span>}
-              </div>
+              </span>
               <span style={{
                 color: record.type === 'income' ? '#52c41a' : '#ff4d4f',
-                fontWeight: 700, fontSize: 14, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap'
+                fontWeight: 700, fontSize: 14, fontFamily: 'Inter, monospace', whiteSpace: 'nowrap', marginLeft: 8
               }}>
                 {record.type === 'income' ? '+' : '-'}¥{effectiveAmount.toFixed(2)}
               </span>
             </div>
-          }
-          description={
-            <div style={{ fontSize: 12, color: NOTE_COLOR }}>
-              {record.date}
-              {isRefunded && record.refundAmount ? ` · 退¥${record.refundAmount.toFixed(2)}${record.shippingFee ? ` 运费¥${record.shippingFee.toFixed(2)}` : ''}` : ''}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+              {renderSourceTag(record.source)}
+              {renderAccountTag(record.accountId)}
+              {isRefunded && record.refundAmount ? <span style={{ fontSize: 10, color: '#faad14' }}>退¥{record.refundAmount.toFixed(2)}{record.shippingFee ? ` 运费¥${record.shippingFee.toFixed(2)}` : ''}</span> : ''}
+              <span style={{ color: SUBTLE, fontFamily: 'Inter, monospace', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 'auto' }}>{record.date}</span>
             </div>
-          }
-        />
+          </div>
+        </div>
       </List.Item>
     )
   }
 
-  const renderCategoryGrid = (data: Category[], type: 'income' | 'expense') => (
+  const renderCategoryGrid = (data: Category[], type: 'income' | 'expense' | 'transfer') => (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ color: SECONDARY, fontSize: 13 }}>
-          共 {data.length} 个{type === 'expense' ? '支出' : '收入'}分类
+          共 {data.length} 个{type === 'expense' ? '支出' : type === 'income' ? '收入' : '转账'}分类
         </span>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd(type)}>
-          添加{type === 'expense' ? '支出' : '收入'}分类
+          添加{type === 'expense' ? '支出' : type === 'income' ? '收入' : '转账'}分类
         </Button>
       </div>
       <Row gutter={[12, 12]}>
@@ -272,7 +266,7 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
                   {category.isDefault ? '默认' : '自定义'}
                 </div>
                 {catRecordCount > 0 && (
-                  <div style={{ marginTop: 6, fontSize: 11, color: type === 'expense' ? '#ff4d4f' : '#52c41a', fontWeight: 600 }}>
+                  <div style={{ marginTop: 6, fontSize: 11, color: type === 'expense' ? '#ff4d4f' : type === 'income' ? '#52c41a' : '#667eea', fontWeight: 600 }}>
                     {catRecordCount}笔 · ¥{catTotal.toFixed(2)}
                   </div>
                 )}
@@ -320,6 +314,11 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
               key: 'income',
               label: `💰 收入分类 (${incomeCategories.length})`,
               children: renderCategoryGrid(incomeCategories, 'income')
+            },
+            {
+              key: 'transfer',
+              label: `🔄 其他分类 (${transferCategories.length})`,
+              children: renderCategoryGrid(transferCategories, 'transfer')
             }
           ]}
         />
@@ -341,6 +340,7 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
             <Select placeholder="请选择类型" size="large">
               <Option value="expense">💸 支出</Option>
               <Option value="income">💰 收入</Option>
+              <Option value="transfer">🔄 转账</Option>
             </Select>
           </Form.Item>
           <Form.Item name="icon" label="图标">
@@ -392,7 +392,7 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 24 }}>{selectedCategory?.icon}</span>
-            <span>{selectedCategory?.name} - {selectedCategory?.type === 'expense' ? '消费' : '收入'}记录</span>
+            <span>{selectedCategory?.name} - {selectedCategory?.type === 'expense' ? '消费' : selectedCategory?.type === 'income' ? '收入' : '转账'}记录</span>
           </div>
         }
         open={recordsVisible}
@@ -418,9 +418,9 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
             </Col>
             <Col span={12}>
               <div style={{ color: SECONDARY, fontSize: 12 }}>
-                {selectedCategory?.type === 'expense' ? '总支出' : '总收入'}
+                {selectedCategory?.type === 'expense' ? '总支出' : selectedCategory?.type === 'income' ? '总收入' : '总金额'}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Inter, monospace', color: selectedCategory?.type === 'expense' ? '#ff4d4f' : '#52c41a' }}>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Inter, monospace', color: selectedCategory?.type === 'expense' ? '#ff4d4f' : selectedCategory?.type === 'income' ? '#52c41a' : '#667eea' }}>
                 ¥{categoryTotal.toFixed(2)}
               </div>
             </Col>
@@ -428,7 +428,7 @@ const Categories: React.FC<CategoriesProps> = ({ isDark = true, onViewCategoryRe
         </div>
 
         {categoryRecords.length === 0 ? (
-          <Empty description={`暂无${selectedCategory?.type === 'expense' ? '消费' : '收入'}记录`} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={`暂无${selectedCategory?.type === 'expense' ? '消费' : selectedCategory?.type === 'income' ? '收入' : '转账'}记录`} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <List
             dataSource={categoryRecords.slice(0, 20)}

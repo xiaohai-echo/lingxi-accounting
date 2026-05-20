@@ -11,15 +11,19 @@ import {
   CloseCircleOutlined
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../store'
+import { store } from '../store'
 import { getApi } from '../api/mock'
+import { getDefaultAccountId } from '../utils/constants'
 import {
   getApiKeyStatus,
   analyzeAccounting,
+  findMissingAccounts,
   transcribeVoice
 } from '../services/ai'
 import type { AccountItem, CategoryItem, RecordInput } from '../services/ai'
 import { fetchRecords } from '../store/slices/recordsSlice'
 import { fetchAccounts } from '../store/slices/accountsSlice'
+import { addAccount } from '../store/slices/accountsSlice'
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -38,6 +42,13 @@ const MODE_LABELS: Record<AIMode, string> = {
   screenshot: '截图识别',
   camera: '拍照记账',
   voice: '语音记账'
+}
+
+const MODE_SOURCE: Record<AIMode, 'ai_text' | 'ai_voice' | 'ai_image'> = {
+  text: 'ai_text',
+  screenshot: 'ai_image',
+  camera: 'ai_image',
+  voice: 'ai_voice'
 }
 
 // ==================== Error Handler ====================
@@ -74,24 +85,42 @@ function showSuccessNotification(
   recordInput: RecordInput,
   categoryName: string,
   accountName: string,
+  targetAccountName: string | undefined,
   notification: any
 ): void {
   const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
   const typeColor = recordInput.type === 'income' ? '#52c41a' : recordInput.type === 'transfer' ? '#667eea' : '#ff4d4f'
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  const now = new Date()
+  const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
   notification.success({
     message: 'AI 记账成功',
     description: (
-      <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-        <div><span style={{ color: typeColor, fontWeight: 600 }}>{typeLabel}</span> ¥{recordInput.amount.toFixed(2)}</div>
-        <div>消费内容：{recordInput.note}</div>
-        <div>付款账户：{accountName}</div>
-        <div>消费类别：{categoryName}</div>
-        <div style={{ color: '#8c8c8c', fontSize: 12 }}>🤖 AI记账备注：{recordInput.note}</div>
+      <div style={{
+        fontSize: 13, lineHeight: 1.8,
+        background: isDark
+          ? `linear-gradient(135deg, ${typeColor}20, ${typeColor}0c)`
+          : `linear-gradient(135deg, ${typeColor}0d, ${typeColor}05)`,
+        padding: '8px 12px', borderRadius: 8, margin: '-4px -4px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div><span style={{ color: typeColor, fontWeight: 600 }}>{typeLabel}</span> ¥{recordInput.amount.toFixed(2)}</div>
+          <span style={{ fontSize: 11, opacity: isDark ? 0.55 : 0.45 }}>{timeStr}</span>
+        </div>
+        <div>记录：{recordInput.title}</div>
+        {recordInput.type === 'transfer' && targetAccountName ? (
+          <div>账户：{accountName} → {targetAccountName}</div>
+        ) : (
+          <div>付款账户：{accountName}</div>
+        )}
+        {recordInput.type !== 'transfer' && <div>消费类别：{categoryName}</div>}
       </div>
     ),
     icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
     duration: 5,
-    placement: 'topRight'
+    placement: 'topRight',
   })
 }
 
@@ -104,7 +133,7 @@ function showFailureNotification(
     description: errorMessage,
     icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
     duration: 4,
-    placement: 'topRight'
+    placement: 'topRight',
   })
 }
 
@@ -259,16 +288,97 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
           categories: categoriesForAI
         })
 
+        const missingAccounts = findMissingAccounts(
+          {
+            amount: recordInput.amount,
+            type: recordInput.type,
+            description: recordInput.note,
+            date: recordInput.date,
+            time: undefined,
+            paymentMethod: recordInput.paymentMethod,
+            cardLast4: recordInput.cardLast4,
+            transferType: recordInput.transferType,
+            targetPaymentMethod: recordInput.targetPaymentMethod,
+            targetCardLast4: recordInput.targetCardLast4,
+            accountId: recordInput.accountId ?? null,
+            categoryId: recordInput.categoryId ?? null,
+            targetAccountId: recordInput.targetAccountId ?? null,
+          },
+          accountsForAI
+        )
+
+        if (missingAccounts.length > 0) {
+          setLoadingText('正在创建账户…')
+          for (const acc of missingAccounts) {
+            await dispatch(addAccount({
+              name: acc.name,
+              type: acc.type as any,
+              balance: acc.balance,
+              cardNo: acc.cardNo,
+              bankName: acc.bankName,
+              uniqueId: acc.uniqueId,
+              ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
+              isDeleted: 0,
+            })).unwrap()
+          }
+          await dispatch(fetchAccounts(currentLedgerId as any))
+          const freshState = store.getState() as RootState
+          const freshAccounts = freshState.accounts.items
+          const freshAccountsForAI: AccountItem[] = freshAccounts.map((a: any) => ({
+            id: a.id!, name: a.name, type: a.type, cardNo: a.cardNo, bankName: a.bankName
+          }))
+          const reanalyzed = await analyzeAccounting({
+            text,
+            imageBase64,
+            accounts: freshAccountsForAI,
+            categories: categoriesForAI
+          })
+          Object.assign(recordInput, reanalyzed)
+
+          const createdNames = missingAccounts.map(a => a.name).join('、')
+          notification.info({
+            message: '已自动创建账户',
+            description: `识别到银行卡尾号，已自动创建：${createdNames}`,
+            duration: 4,
+            placement: 'topRight',
+          })
+        }
+
         setLoadingText('正在写入…')
+
+        let filePath: string | undefined
+        if (mode !== 'text' && imageBase64) {
+          const ext = mode === 'voice' ? 'webm' : 'png'
+          const subDir = mode === 'voice' ? 'audio' : 'images'
+          filePath = `${subDir}/record_${Date.now()}.${ext}`
+          try {
+            await getApi().saveAttachment(filePath, imageBase64)
+          } catch { /* fallback: continue even if save fails */ }
+        }
 
         await getApi().addRecord({
           amount: recordInput.amount,
           type: recordInput.type,
           categoryId: recordInput.categoryId ?? 0,
-          accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
+          accountId: recordInput.accountId ?? getDefaultAccountId() ?? (accounts[0]?.id ?? 1),
+          targetAccountId: recordInput.type === 'transfer' ? recordInput.targetAccountId : undefined,
+          transferType: recordInput.type === 'transfer' ? recordInput.transferType : undefined,
+          fee: recordInput.type === 'transfer' ? recordInput.fee : undefined,
           ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
           date: recordInput.date,
-          note: `🤖 ${recordInput.note}`,
+          title: recordInput.title,
+          note: mode === 'voice'
+            ? `语音转写：${text || ''}`
+            : mode === 'text'
+              ? (text || '')
+              : [
+                  `图片识别：${recordInput.note}`,
+                  recordInput.paymentMethod ? `支付方式：${recordInput.paymentMethod}${recordInput.cardLast4 ? `(${recordInput.cardLast4})` : ''}` : '',
+                  recordInput.type === 'transfer' && recordInput.targetPaymentMethod ? `目标账户：${recordInput.targetPaymentMethod}${recordInput.targetCardLast4 ? `(${recordInput.targetCardLast4})` : ''}` : '',
+                  filePath ? `附件：${filePath}` : '',
+                ].filter(Boolean).join('，'),
+          rawFilePath: filePath,
+          source: MODE_SOURCE[mode],
           createdAt: recordInput.time
             ? `${recordInput.date}T${recordInput.time}`
             : new Date().toISOString()
@@ -279,17 +389,19 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
         const category = categories.find((c) => c.id === recordInput.categoryId)
         const account = accounts.find((a) => a.id === recordInput.accountId)
+        const targetAccount = recordInput.type === 'transfer' ? accounts.find((a) => a.id === recordInput.targetAccountId) : undefined
         const categoryName = category?.name ?? '未分类'
         const accountName = account?.name ?? '默认账户'
+        const targetAccountName = targetAccount?.name
 
         const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
 
-        getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
+        getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.title}`, `${categoryName} | ${accountName}`)
 
         dispatch(fetchRecords(currentLedgerId as any))
         dispatch(fetchAccounts(currentLedgerId as any))
 
-        showSuccessNotification(recordInput, categoryName, accountName, notification)
+        showSuccessNotification(recordInput, categoryName, accountName, targetAccountName, notification)
         onClose()
         onSuccess()
       } catch (e) {
@@ -608,13 +720,30 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
               text: speechText, accounts: accountsForAI, categories: categoriesForAI
             })
             setLoadingText('正在写入…')
+            const voicePath1 = `audio/record_${Date.now()}.webm`
+            const audioBlob1 = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+            const audioBase641 = await new Promise<string>((resolve) => {
+              const reader = new FileReader()
+              reader.onload = () => {
+                const result = reader.result as string
+                resolve(result.split(',')[1] || result)
+              }
+              reader.readAsDataURL(audioBlob1)
+            })
+            try { await getApi().saveAttachment(voicePath1, audioBase641) } catch { /* fallback */ }
             await getApi().addRecord({
               amount: recordInput.amount, type: recordInput.type,
               categoryId: recordInput.categoryId ?? 0,
-              accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
+              accountId: recordInput.accountId ?? getDefaultAccountId() ?? (accounts[0]?.id ?? 1),
+              targetAccountId: recordInput.type === 'transfer' ? recordInput.targetAccountId : undefined,
+              transferType: recordInput.type === 'transfer' ? recordInput.transferType : undefined,
+              fee: recordInput.type === 'transfer' ? recordInput.fee : undefined,
               ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
               date: recordInput.date,
-              note: `🤖 ${recordInput.note}`,
+              title: recordInput.title,
+              note: `语音转写：${speechText}`,
+              rawFilePath: voicePath1,
+              source: 'ai_voice',
               createdAt: recordInput.time
                 ? `${recordInput.date}T${recordInput.time}`
                 : new Date().toISOString()
@@ -623,16 +752,18 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
             setLoadingText('')
             const category = categories.find((c) => c.id === recordInput.categoryId)
             const account = accounts.find((a) => a.id === recordInput.accountId)
+            const targetAccount = recordInput.type === 'transfer' ? accounts.find((a) => a.id === recordInput.targetAccountId) : undefined
             const categoryName = category?.name ?? '未分类'
             const accountName = account?.name ?? '默认账户'
+            const targetAccountName = targetAccount?.name
             const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
 
-            getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
+            getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.title}`, `${categoryName} | ${accountName}`)
 
             dispatch(fetchRecords(currentLedgerId as any))
             dispatch(fetchAccounts(currentLedgerId as any))
 
-            showSuccessNotification(recordInput, categoryName, accountName, notification)
+            showSuccessNotification(recordInput, categoryName, accountName, targetAccountName, notification)
             onClose()
             onSuccess()
             return
@@ -688,14 +819,23 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
             setLoadingText('正在写入…')
 
+            const voicePath2 = `audio/record_${Date.now()}.webm`
+            try { await getApi().saveAttachment(voicePath2, base64) } catch { /* fallback */ }
+
             await getApi().addRecord({
               amount: recordInput.amount,
               type: recordInput.type,
               categoryId: recordInput.categoryId ?? 0,
-              accountId: recordInput.accountId ?? (accounts[0]?.id ?? 1),
+              accountId: recordInput.accountId ?? getDefaultAccountId() ?? (accounts[0]?.id ?? 1),
+              targetAccountId: recordInput.type === 'transfer' ? recordInput.targetAccountId : undefined,
+              transferType: recordInput.type === 'transfer' ? recordInput.transferType : undefined,
+              fee: recordInput.type === 'transfer' ? recordInput.fee : undefined,
               ledgerId: currentLedgerId || (accounts[0]?.ledgerId ?? 1),
               date: recordInput.date,
-              note: `🤖 ${recordInput.note}`,
+              title: recordInput.title,
+              note: `语音转写：${transcription}`,
+              rawFilePath: voicePath2,
+              source: 'ai_voice',
               createdAt: recordInput.time
                 ? `${recordInput.date}T${recordInput.time}`
                 : new Date().toISOString()
@@ -706,17 +846,19 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
 
             const category = categories.find((c) => c.id === recordInput.categoryId)
             const account = accounts.find((a) => a.id === recordInput.accountId)
+            const targetAccount = recordInput.type === 'transfer' ? accounts.find((a) => a.id === recordInput.targetAccountId) : undefined
             const categoryName = category?.name ?? '未分类'
             const accountName = account?.name ?? '默认账户'
+            const targetAccountName = targetAccount?.name
 
             const typeLabel = recordInput.type === 'income' ? '收入' : recordInput.type === 'transfer' ? '转账' : '支出'
 
-            getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.note}`, `${categoryName} | ${accountName}`)
+            getApi().addLog('ai_record', `AI记账(${typeLabel}): ¥${recordInput.amount.toFixed(2)} ${recordInput.title}`, `${categoryName} | ${accountName}`)
 
             dispatch(fetchRecords(currentLedgerId as any))
             dispatch(fetchAccounts(currentLedgerId as any))
 
-            showSuccessNotification(recordInput, categoryName, accountName, notification)
+            showSuccessNotification(recordInput, categoryName, accountName, targetAccountName, notification)
             onClose()
             onSuccess()
           } catch (e) {

@@ -212,6 +212,18 @@ body {
   white-space: nowrap;
 }
 
+.source-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
 .ant-layout-sider-trigger {
   color: rgba(255, 255, 255, 0.65) !important;
   background: rgba(102, 126, 234, 0.15) !important;
@@ -344,4 +356,36 @@ body {
   .ai-mode-card {
     padding: 14px 8px;
   }
+}
+
+[data-theme="dark"] .ant-notification-notice {
+  background: #1f1f1f !important;
+}
+
+[data-theme="dark"] .ant-notification-notice-message {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+[data-theme="dark"] .ant-notification-notice-description {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+[data-theme="dark"] .ant-notification-notice-close {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+[data-theme="dark"] .ant-notification-notice-close:hover {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+[data-theme="light"] .ant-notification-notice {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .ant-notification-notice-message {
+  color: rgba(0, 0, 0, 0.88) !important;
+}
+
+[data-theme="light"] .ant-notification-notice-description {
+  color: rgba(0, 0, 0, 0.85) !important;
 }

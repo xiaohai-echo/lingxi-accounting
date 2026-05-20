@@ -26,18 +26,21 @@ export interface RecordInput {
   accountId?: number
   date: string
   time?: string
+  title: string
   note: string
   paymentMethod?: string
   cardLast4?: string | null
   transferType?: 'transfer' | 'withdraw' | 'recharge'
   targetAccountId?: number
+  targetPaymentMethod?: string
+  targetCardLast4?: string | null
   fee?: number
 }
 
 export interface CategoryItem {
   id: number
   name: string
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'transfer'
   icon?: string
   color?: string
 }
@@ -240,13 +243,19 @@ export function parseExtracted(raw: string): ExtractedInfo {
 
   // Optional fields
   const paymentMethod = obj.paymentMethod ? String(obj.paymentMethod) : undefined
-  const cardLast4 = obj.cardLast4 && obj.cardLast4 !== null ? String(obj.cardLast4) : null
+  const rawCardLast4 = obj.cardLast4 && obj.cardLast4 !== null ? String(obj.cardLast4).replace(/\s/g, '') : null
+  const cardLast4 = rawCardLast4
+    ? (rawCardLast4.length > 4 ? rawCardLast4.slice(-4) : rawCardLast4)
+    : null
 
   const rawTransferType = obj.transferType ? String(obj.transferType) : ''
   const transferType: 'transfer' | 'withdraw' | 'recharge' | undefined =
     ['transfer', 'withdraw', 'recharge'].includes(rawTransferType) ? rawTransferType as any : undefined
   const targetPaymentMethod = obj.targetPaymentMethod ? String(obj.targetPaymentMethod) : undefined
-  const targetCardLast4 = obj.targetCardLast4 && obj.targetCardLast4 !== null ? String(obj.targetCardLast4) : null
+  const rawTargetCardLast4 = obj.targetCardLast4 && obj.targetCardLast4 !== null ? String(obj.targetCardLast4).replace(/\s/g, '') : null
+  const targetCardLast4 = rawTargetCardLast4
+    ? (rawTargetCardLast4.length > 4 ? rawTargetCardLast4.slice(-4) : rawTargetCardLast4)
+    : null
 
   const accountId = obj.accountId != null ? Number(obj.accountId) : null
   const categoryId = obj.categoryId != null ? Number(obj.categoryId) : null
@@ -282,7 +291,7 @@ function buildExtractionPrompt(text: string, accounts?: AccountItem[], categorie
     : ''
 
   const categorySection = categories && categories.length > 0
-    ? `\n\n用户分类列表：\n${categories.map(c => `ID:${c.id} - ${c.name}(${c.type === 'income' ? '收入' : '支出'})`).join('\n')}\n请根据消费描述，从以上分类列表中选择最匹配的分类，返回其 ID 作为 categoryId。注意 type 为 expense 时只能选支出分类，type 为 income 时只能选收入分类。`
+    ? `\n\n用户分类列表：\n${categories.map(c => `ID:${c.id} - ${c.name}(${c.type === 'income' ? '收入' : c.type === 'transfer' ? '转账' : '支出'})`).join('\n')}\n请根据消费描述，从以上分类列表中选择最匹配的分类，返回其 ID 作为 categoryId。注意 type 为 expense 时只能选支出分类，type 为 income 时只能选收入分类，type 为 transfer 时只能选转账分类。`
     : ''
 
   const now = new Date()
@@ -298,7 +307,7 @@ function buildExtractionPrompt(text: string, accounts?: AccountItem[], categorie
   "date": "YYYY-MM-DD 格式",
   "time": "HH:mm:ss 格式，如用户未提及具体时间则为null",
   "paymentMethod": "支付来源（如：微信、支付宝、现金、银行卡、花呗、零钱等，可选）",
-  "cardLast4": "银行卡后四位（如无则为null）",
+  "cardLast4": "银行卡后四位（如提及银行卡尾号则提取，如'工商银行(8888)'提取8888，'****1234'提取1234，否则为null）",
   "transferType": "如type为transfer，标记为transfer/withdraw/recharge，否则为null",
   "targetPaymentMethod": "转账/提现的目标账户描述（如：银行卡、微信零钱等，可选）",
   "targetCardLast4": "目标银行卡后四位（如无则为null）",
@@ -323,9 +332,68 @@ function buildExtractionPrompt(text: string, accounts?: AccountItem[], categorie
 用户输入：${text}`
 }
 
+function buildImageExtractionPrompt(accounts?: AccountItem[], categories?: CategoryItem[]): string {
+  const accountSection = accounts && accounts.length > 0
+    ? `\n\n用户账户列表：\n${accounts.map(a => {
+        const parts = [`ID:${a.id} - ${a.name}(${a.type})`]
+        if (a.bankName) parts.push(`银行:${a.bankName}`)
+        if (a.cardNo) parts.push(`尾号:${a.cardNo.slice(-4)}`)
+        return parts.join(' ')
+      }).join('\n')}\n请根据截图中的支付方式，从以上账户列表中选择最匹配的账户，返回其 ID 作为 accountId。如截图显示"花呗"则匹配花呗或支付宝账户，"零钱"匹配微信账户，"银行卡"匹配 type 为 bank 或 credit 的账户（根据尾号精确匹配）。如为转账/充值/提现，还需返回 targetAccountId。`
+    : ''
+
+  const categorySection = categories && categories.length > 0
+    ? `\n\n用户分类列表：\n${categories.map(c => `ID:${c.id} - ${c.name}(${c.type === 'income' ? '收入' : c.type === 'transfer' ? '转账' : '支出'})`).join('\n')}\n请根据消费描述，从以上分类列表中选择最匹配的分类，返回其 ID 作为 categoryId。注意 type 为 expense 时只能选支出分类，type 为 income 时只能选收入分类，type 为 transfer 时只能选转账分类。`
+    : ''
+
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+  return `你是一个支付截图识别助手。请从这张支付截图中提取记账信息，返回纯 JSON 格式（不要 markdown 代码块）：
+{
+  "amount": 数字（支付金额，大于0）,
+  "type": "income"、"expense" 或 "transfer",
+  "description": "消费的商户名称或商品描述，这是最核心的信息，用于作为记账记录的标题。例如：'瑞幸咖啡'、'美团外卖'、'滴滴出行'。如为转账/充值/提现则写'转账'/'充值'/'提现'",
+  "date": "YYYY-MM-DD 格式（从截图中识别交易日期）",
+  "time": "HH:mm:ss 格式（从截图中识别交易时间，如无法识别则为null）",
+  "paymentMethod": "支付来源描述（如：微信零钱、微信、支付宝、花呗、银行卡、储蓄卡、信用卡等）",
+  "cardLast4": "银行卡后四位（如支付方式涉及银行卡则提取，否则为null）",
+  "transferType": "如type为transfer，标记为transfer/withdraw/recharge，否则为null",
+  "targetPaymentMethod": "转账/充值/提现的目标账户描述（如：银行卡、微信零钱、支付宝等，非转账则为null）",
+  "targetCardLast4": "目标银行卡后四位（如无则为null）",
+  "accountId": 从账户列表匹配的付款账户ID（如无法匹配则为null）,
+  "categoryId": 从分类列表匹配的分类ID（如无法匹配则为null）,
+  "targetAccountId": 转账/充值/提现的收款账户ID（如非转账则为null）
+}
+
+识别规则：
+1. **金额识别**：提取截图中的支付金额，注意区分"金额"和"余额"，取支付/转账的金额而非账户余额
+2. **类型判断**：
+   - 普通消费支付（买东西、吃饭等）→ type: "expense"
+   - 收到款项 → type: "income"
+   - 转账（账户间互转）→ type: "transfer", transferType: "transfer"
+   - 充值（银行卡充到微信/支付宝）→ type: "transfer", transferType: "recharge"
+   - 提现（微信/支付宝提到银行卡）→ type: "transfer", transferType: "withdraw"
+3. **商户名称**：提取截图中的商户名/店名作为 description，这是记账的核心标题信息。如"瑞幸咖啡"、"美团"、"滴滴"等
+4. **支付方式与银行卡尾号识别**（非常重要！）：
+   - 截图中银行卡尾号通常出现在括号内或星号后，如"工商银行(8888)"、"建设银行****1234"、"尾号5678"
+   - cardLast4 必须提取完整的4位数字，如"8888"、"1234"、"5678"
+   - 如果截图显示"银行卡(8888)"，则 paymentMethod 为"银行卡"，cardLast4 为"8888"
+   - 如果截图显示"信用卡****1234"，则 paymentMethod 为"信用卡"，cardLast4 为"1234"
+   - 转账场景中目标账户的银行卡尾号同样规则提取到 targetCardLast4
+5. **日期时间**：从截图中识别交易发生的日期和时间，如截图中无日期则使用今天 ${todayStr}
+6. **转账场景**（特别注意双账户的尾号匹配）：
+   - 充值截图：paymentMethod 为付款方（如银行卡****1234），targetPaymentMethod 为收款方（如微信/支付宝）
+   - 提现截图：paymentMethod 为付款方（如微信/支付宝），targetPaymentMethod 为收款方（如银行卡****5678）
+   - 转账截图：paymentMethod 为转出方，targetPaymentMethod 为转入方
+   - 转账场景中必须提取双方的银行卡尾号！
+7. accountId 和 categoryId 必须从提供的列表中选择，不要编造不存在的 ID
+8. 如果账户列表中没有匹配尾号的银行卡账户，accountId/targetAccountId 设为 null，但 cardLast4/targetCardLast4 必须如实提取${accountSection}${categorySection}`
+}
+
 function buildCategoryPrompt(
   description: string,
-  matchType: 'income' | 'expense',
+  matchType: 'income' | 'expense' | 'transfer',
   categories: CategoryItem[]
 ): string {
   const filtered = categories.filter(c => c.type === matchType)
@@ -336,7 +404,7 @@ function buildCategoryPrompt(
   return `根据消费描述，从以下分类列表中选择最匹配的分类，只返回分类 ID 数字。
 
 消费描述：${description}
-消费类型：${matchType === 'income' ? '收入' : '支出'}
+消费类型：${matchType === 'income' ? '收入' : matchType === 'transfer' ? '转账' : '支出'}
 
 分类列表：
 ${categoryList}
@@ -363,7 +431,7 @@ export async function extractFromImage(base64: string, accounts?: AccountItem[],
     {
       role: 'user',
       content: [
-        { type: 'text', text: buildExtractionPrompt('请从这张图片中提取记账信息。', accounts, categories) },
+        { type: 'text', text: buildImageExtractionPrompt(accounts, categories) },
         { type: 'image_url', image_url: { url: imageUrl } }
       ]
     }
@@ -373,7 +441,7 @@ export async function extractFromImage(base64: string, accounts?: AccountItem[],
 
 // ==================== Voice Transcription ====================
 
-export async function transcribeVoice(audioBase64: string, mimeType?: string): Promise<string> {
+export async function transcribeVoice(audioBase64: string, _mimeType?: string): Promise<string> {
   const apiKey = getApiKey()
   if (!apiKey) throw new Error('API_KEY_MISSING')
 
@@ -429,7 +497,7 @@ export function matchStoreMapping(description: string): number | null {
 
 export async function aiMatchCategory(
   description: string,
-  type: 'income' | 'expense',
+  type: 'income' | 'expense' | 'transfer',
   categories: CategoryItem[]
 ): Promise<number | null> {
   const matchingCategories = categories.filter(c => c.type === type)
@@ -474,15 +542,32 @@ export function matchAccount(
 ): AccountItem | null {
   if (!accounts || accounts.length === 0) return null
 
-  // Tier 1: cardLast4 exact match against account.cardNo
   if (cardLast4 && cardLast4.length > 0) {
+    const method = (paymentMethod || '').toLowerCase()
+
+    const preferCredit = method.includes('信用卡') || method.includes('credit')
+    const preferBank = method.includes('储蓄卡') || method.includes('借记卡') || method.includes('debit')
+
+    if (preferCredit) {
+      const creditMatch = accounts.find(
+        a => a.type === 'credit' && a.cardNo && typeof a.cardNo === 'string' && a.cardNo.endsWith(cardLast4)
+      )
+      if (creditMatch) return creditMatch
+    }
+
+    if (preferBank) {
+      const bankMatch = accounts.find(
+        a => a.type === 'bank' && a.cardNo && typeof a.cardNo === 'string' && a.cardNo.endsWith(cardLast4)
+      )
+      if (bankMatch) return bankMatch
+    }
+
     const cardMatch = accounts.find(
       a => a.cardNo && typeof a.cardNo === 'string' && a.cardNo.endsWith(cardLast4)
     )
     if (cardMatch) return cardMatch
   }
 
-  // Tier 2: paymentMethod fuzzy match
   if (paymentMethod) {
     const method = paymentMethod.toLowerCase()
 
@@ -524,19 +609,90 @@ export function matchAccount(
     }
   }
 
-  // Tier 3: default fallback
   if (type === 'income') {
     const bank = accounts.find(a => a.type === 'bank')
     if (bank) return bank
   }
-  // For expense, default to wechat
   const wechat = accounts.find(a => a.type === 'wechat')
   if (wechat) return wechat
-  // Next: cash
   const cash = accounts.find(a => a.type === 'cash')
   if (cash) return cash
-  // Last resort: first available account
   return accounts[0] || null
+}
+
+// ==================== Account Auto-Creation ====================
+
+export interface AccountToCreate {
+  name: string
+  type: string
+  cardNo: string
+  bankName?: string
+  balance: number
+  uniqueId?: string
+}
+
+export function findMissingAccounts(
+  extracted: ExtractedInfo,
+  accounts: AccountItem[]
+): AccountToCreate[] {
+  const toCreate: AccountToCreate[] = []
+
+  const checkAndAdd = (paymentMethod: string | undefined, cardLast4: string | null | undefined) => {
+    if (!cardLast4 || cardLast4.length === 0) return
+    const existing = accounts.find(
+      a => a.cardNo && typeof a.cardNo === 'string' && a.cardNo.endsWith(cardLast4)
+    )
+    if (existing) return
+
+    const alreadyQueued = toCreate.some(a => a.cardNo.endsWith(cardLast4!))
+    if (alreadyQueued) return
+
+    const method = (paymentMethod || '').toLowerCase()
+    const isCredit = method.includes('信用卡') || method.includes('credit')
+    const accountType = isCredit ? 'credit' : 'bank'
+    const typeLabel = isCredit ? '信用卡' : '储蓄卡'
+
+    let bankFullName: string | undefined
+    const bankMatch = paymentMethod?.match(/([\u4e00-\u9fa5]+银行)/)
+    if (bankMatch) bankFullName = bankMatch[1]
+
+    const bankShortName = bankFullName
+      ? (bankFullName === '中国银行' ? '中国银行' : bankFullName.replace(/^中国/, ''))
+      : undefined
+
+    let bankMinimalName: string | undefined
+    if (bankShortName) {
+      if (bankShortName === '中国银行') {
+        bankMinimalName = '中行'
+      } else {
+        bankMinimalName = bankShortName.replace(/银行$/, '')
+      }
+    }
+
+    const name = bankMinimalName
+      ? `${bankMinimalName} ${cardLast4}`
+      : `${typeLabel} ${cardLast4}`
+
+    const uniqueId = bankMinimalName
+      ? `${bankMinimalName}${cardLast4}`
+      : `${typeLabel}${cardLast4}`
+
+    toCreate.push({
+      name,
+      type: accountType,
+      cardNo: cardLast4,
+      bankName: bankFullName,
+      balance: 0,
+      uniqueId,
+    })
+  }
+
+  checkAndAdd(extracted.paymentMethod, extracted.cardLast4)
+  if (extracted.type === 'transfer') {
+    checkAndAdd(extracted.targetPaymentMethod, extracted.targetCardLast4)
+  }
+
+  return toCreate
 }
 
 // ==================== Main Orchestrator ====================
@@ -560,19 +716,17 @@ export async function analyzeAccounting(options: {
   const { amount, type, description, date, time, paymentMethod, cardLast4, transferType, targetPaymentMethod, targetCardLast4 } = extracted
 
   let categoryId: number | undefined
-  if (type !== 'transfer') {
-    if (extracted.categoryId != null) {
-      const found = options.categories.find(c => c.id === extracted.categoryId && c.type === type)
-      if (found) categoryId = extracted.categoryId
-    }
-    if (categoryId === undefined) {
-      const storeMatch = matchStoreMapping(description)
-      if (storeMatch !== null) categoryId = storeMatch
-    }
-    if (categoryId === undefined) {
-      const aiMatch = await aiMatchCategory(description, type, options.categories)
-      if (aiMatch !== null) categoryId = aiMatch
-    }
+  if (extracted.categoryId != null) {
+    const found = options.categories.find(c => c.id === extracted.categoryId && c.type === type)
+    if (found) categoryId = extracted.categoryId
+  }
+  if (categoryId === undefined) {
+    const storeMatch = matchStoreMapping(description)
+    if (storeMatch !== null) categoryId = storeMatch
+  }
+  if (categoryId === undefined) {
+    const aiMatch = await aiMatchCategory(description, type, options.categories)
+    if (aiMatch !== null) categoryId = aiMatch
   }
 
   let accountId: number | undefined
@@ -597,6 +751,23 @@ export async function analyzeAccounting(options: {
     }
   }
 
+  let title: string
+  if (type === 'transfer') {
+    const sourceAccount = options.accounts.find(a => a.id === accountId)
+    const targetAccount = options.accounts.find(a => a.id === targetAccountId)
+    const sourceLabel = sourceAccount ? sourceAccount.name : (paymentMethod || '未知账户')
+    const targetLabel = targetAccount ? targetAccount.name : (targetPaymentMethod || '未知账户')
+    if (transferType === 'recharge') {
+      title = `充值-${sourceLabel}→${targetLabel}`
+    } else if (transferType === 'withdraw') {
+      title = `提现-${sourceLabel}→${targetLabel}`
+    } else {
+      title = `转账-${sourceLabel}→${targetLabel}`
+    }
+  } else {
+    title = description
+  }
+
   return {
     amount,
     type,
@@ -605,9 +776,12 @@ export async function analyzeAccounting(options: {
     targetAccountId,
     date,
     time,
+    title,
     note: description,
     transferType,
     paymentMethod,
-    cardLast4
+    cardLast4,
+    targetPaymentMethod,
+    targetCardLast4
   }
 }

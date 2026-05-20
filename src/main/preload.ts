@@ -85,7 +85,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Test data
   addTestData: (): Promise<{ success: boolean; message: string }> =>
-    ipcRenderer.invoke('add-test-data')
+    ipcRenderer.invoke('add-test-data'),
+
+  // Attachments
+  saveAttachment: (relativePath: string, base64Data: string): Promise<{ success: boolean; path?: string; message?: string }> =>
+    ipcRenderer.invoke('save-attachment', relativePath, base64Data),
+  readAttachment: (relativePath: string): Promise<{ success: boolean; base64?: string; message?: string }> =>
+    ipcRenderer.invoke('read-attachment', relativePath),
 })
 
 declare global {
@@ -128,6 +134,8 @@ declare global {
       exportCSV: () => Promise<string>
       importData: (jsonStr: string, mode: 'replace' | 'merge') => Promise<{ success: boolean; message: string; stats: any }>
       addTestData: () => Promise<{ success: boolean; message: string }>
+      saveAttachment: (relativePath: string, base64Data: string) => Promise<{ success: boolean; path?: string; message?: string }>
+      readAttachment: (relativePath: string) => Promise<{ success: boolean; base64?: string; message?: string }>
     }
   }
 }
