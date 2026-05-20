@@ -54,28 +54,27 @@ const MODE_SOURCE: Record<AIMode, 'ai_text' | 'ai_voice' | 'ai_image'> = {
 // ==================== Error Handler ====================
 
 function handleError(e: Error, msg: { error: (content: string) => void }): void {
-  switch (e.message) {
-    case 'NO_API_KEY':
-      msg.error('请先在设置页配置智谱 API Key')
-      break
-    case 'INVALID_API_KEY':
-      msg.error('API Key 无效，请前往设置页重新配置')
-      break
-    case 'PARSE_ERROR':
-      msg.error('AI 解析失败，请重试')
-      break
-    case 'AMOUNT_INVALID':
-      msg.error('未能识别有效金额，请重新描述')
-      break
-    case 'VOICE_ERROR':
-      msg.error('语音识别失败，请重试')
-      break
-    case 'NO_INPUT':
-      msg.error('请输入记账描述或上传图片')
-      break
-    default:
-      msg.error('网络连接失败，请检查网络后重试')
-      break
+  const m = e.message
+  if (m === 'NO_API_KEY' || m === 'API_KEY_MISSING') {
+    msg.error('请先在设置页配置智谱 API Key')
+  } else if (m === 'INVALID_API_KEY') {
+    msg.error('API Key 无效，请前往设置页重新配置')
+  } else if (m === 'PARSE_ERROR') {
+    msg.error('AI 解析失败，请重试')
+  } else if (m === 'AMOUNT_INVALID') {
+    msg.error('未能识别有效金额，请重新描述')
+  } else if (m === 'VOICE_ERROR') {
+    msg.error('语音识别失败，请重试')
+  } else if (m === 'NO_INPUT') {
+    msg.error('请输入记账描述或上传图片')
+  } else if (m.startsWith('ASR_ERROR')) {
+    msg.error('语音转文字失败，请确保录音清晰且时长在30秒内')
+  } else if (m.includes('语音识别结果为空')) {
+    msg.error(m)
+  } else if (m === 'API_ERROR') {
+    msg.error('网络连接失败，请检查网络后重试')
+  } else {
+    msg.error('操作失败，请重试')
   }
 }
 
@@ -744,7 +743,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
               recognitionRef.current.stop()
             } catch { /* already stopped */ }
             recognitionRef.current = null
-            setTimeout(resolve, 300)
+            setTimeout(resolve, 500)
           } else {
             resolve()
           }
@@ -916,11 +915,8 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
           setLoading(false)
           setLoadingText('')
           const err = e instanceof Error ? e : new Error(String(e))
-          const mappedMessage = err.message.includes('ASR_ERROR') || err.message.includes('voice') || err.message.includes('audio')
-            ? '语音识别失败，请重试'
-            : err.message
-          handleError(new Error(mappedMessage), message)
-          showFailureNotification(mappedMessage, notification)
+          handleError(err, message)
+          showFailureNotification(err.message, notification)
         }
       }
 

@@ -472,6 +472,17 @@ function encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffer {
   return buffer
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 8192
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize)
+    binary += String.fromCharCode.apply(null, Array.from(chunk))
+  }
+  return btoa(binary)
+}
+
 async function convertToWav(audioBlob: Blob): Promise<string> {
   const arrayBuffer = await audioBlob.arrayBuffer()
   const audioCtx = new AudioContext()
@@ -479,12 +490,7 @@ async function convertToWav(audioBlob: Blob): Promise<string> {
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
     const samples = audioBuffer.getChannelData(0)
     const wavBuffer = encodeWav(samples, audioBuffer.sampleRate)
-    const bytes = new Uint8Array(wavBuffer)
-    let binary = ''
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i])
-    }
-    return btoa(binary)
+    return arrayBufferToBase64(wavBuffer)
   } finally {
     audioCtx.close()
   }
@@ -500,8 +506,8 @@ export async function transcribeVoice(audioBase64: string, mimeType?: string): P
     if (commaIdx !== -1) base64Data = audioBase64.substring(commaIdx + 1)
   }
 
-  const isWebm = mimeType?.includes('webm') || mimeType?.includes('ogg')
-  if (isWebm) {
+  const needsConversion = !mimeType?.includes('wav') && !mimeType?.includes('mp3')
+  if (needsConversion) {
     try {
       const binaryStr = atob(base64Data)
       const bytes = new Uint8Array(binaryStr.length)
@@ -510,8 +516,9 @@ export async function transcribeVoice(audioBase64: string, mimeType?: string): P
       }
       const blob = new Blob([bytes], { type: mimeType || 'audio/webm' })
       base64Data = await convertToWav(blob)
+      console.log('[ASR] audio converted to WAV successfully')
     } catch (e) {
-      console.warn('[ASR] webm→wav conversion failed, sending original:', e)
+      console.warn('[ASR] audio conversion failed, sending original format:', e)
     }
   }
 
@@ -528,6 +535,7 @@ export async function transcribeVoice(audioBase64: string, mimeType?: string): P
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '')
+    console.error('[ASR] API error:', response.status, errorText)
     throw new Error(`ASR_ERROR: ${response.status} ${errorText}`)
   }
 
