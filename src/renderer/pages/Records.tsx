@@ -6,7 +6,8 @@ import {
 } from 'antd'
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  FilterOutlined, CloseOutlined, SwapOutlined, RollbackOutlined, EllipsisOutlined
+  FilterOutlined, CloseOutlined, SwapOutlined, RollbackOutlined, EllipsisOutlined,
+  FormOutlined, AudioOutlined, PictureOutlined, CameraOutlined
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import type { RootState, AppDispatch } from '../store'
@@ -15,10 +16,18 @@ import { fetchAccounts } from '../store/slices/accountsSlice'
 import type { Record as RecordType } from '../../main/database/schema'
 import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_COLORS, getDefaultAccountId } from '../utils/constants'
 import RecordDetailModal from '../components/RecordDetailModal'
+import AIRecordModal from '../components/AIRecordModal'
 
 const { Option } = Select
 const { TextArea } = Input
 const { RangePicker } = DatePicker
+
+const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+  manual: { label: '手动', color: '#8c8c8c', icon: '✏️' },
+  ai_text: { label: 'AI文本', color: '#667eea', icon: '💬' },
+  ai_voice: { label: 'AI语音', color: '#faad14', icon: '🎙️' },
+  ai_image: { label: 'AI图片', color: '#13c2c2', icon: '📷' },
+}
 
 const QUICK_DATES: { label: string; getValue: () => [dayjs.Dayjs, dayjs.Dayjs] }[] = [
   { label: '今天', getValue: () => [dayjs(), dayjs()] },
@@ -56,6 +65,8 @@ const Records: React.FC<RecordsProps> = ({
   const [recordType, setRecordType] = useState<'income' | 'expense'>('expense')
   const [activeTab, setActiveTab] = useState('all')
   const [searchText, setSearchText] = useState('')
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiMode, setAiMode] = useState<'text' | 'voice' | 'screenshot' | 'camera'>('text')
   const [form] = Form.useForm()
 
   const [filterCategory, setFilterCategory] = useState<number | undefined>(undefined)
@@ -141,11 +152,16 @@ const Records: React.FC<RecordsProps> = ({
       result = result.filter(r => {
         const category = getCategoryById(r.categoryId)
         const account = getAccountById(r.accountId)
+        const sourceCfg = SOURCE_CONFIG[r.source || 'manual'] || SOURCE_CONFIG.manual
         return (
           (r.note && r.note.toLowerCase().includes(lower)) ||
           (category?.name && category.name.toLowerCase().includes(lower)) ||
           (account?.name && account.name.toLowerCase().includes(lower)) ||
-          r.amount.toString().includes(lower)
+          r.amount.toString().includes(lower) ||
+          sourceCfg.label.toLowerCase().includes(lower) ||
+          sourceCfg.icon.includes(searchText) ||
+          (r.source || 'manual').toLowerCase().includes(lower) ||
+          (r.title && r.title.toLowerCase().includes(lower))
         )
       })
     }
@@ -302,13 +318,6 @@ const Records: React.FC<RecordsProps> = ({
       return <Tag color="orange" style={{ fontSize: 11, lineHeight: '18px' }}>已退款</Tag>
     }
     return <Tag color="gold" style={{ fontSize: 11, lineHeight: '18px' }}>部分退款</Tag>
-  }
-
-  const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-    manual: { label: '手动', color: '#8c8c8c', icon: '✏️' },
-    ai_text: { label: 'AI文本', color: '#667eea', icon: '💬' },
-    ai_voice: { label: 'AI语音', color: '#faad14', icon: '🎙️' },
-    ai_image: { label: 'AI图片', color: '#13c2c2', icon: '📷' },
   }
 
   const renderSourceTag = (source?: string) => {
@@ -484,7 +493,18 @@ const Records: React.FC<RecordsProps> = ({
                 筛选{hasActiveFilters ? ` (${(filterCategory !== undefined ? 1 : 0) + (filterDateRange !== null ? 1 : 0) + (filterAccount !== undefined ? 1 : 0)})` : ''}
               </Button>
               <Input placeholder="搜索记录..." prefix={<SearchOutlined />} value={searchText} onChange={e => setSearchText(e.target.value)} style={{ width: 140, borderRadius: 8 }} allowClear size="small" />
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="small">记一笔</Button>
+              <Dropdown menu={{
+                items: [
+                  { key: 'manual', icon: <FormOutlined />, label: '手动记账', onClick: () => handleAdd() },
+                  { type: 'divider' },
+                  { key: 'text', icon: <EditOutlined />, label: '文字记账', onClick: () => { setAiMode('text'); setAiModalOpen(true) } },
+                  { key: 'voice', icon: <AudioOutlined />, label: '语音记账', onClick: () => { setAiMode('voice'); setAiModalOpen(true) } },
+                  { key: 'screenshot', icon: <PictureOutlined />, label: '图片记账', onClick: () => { setAiMode('screenshot'); setAiModalOpen(true) } },
+                  { key: 'camera', icon: <CameraOutlined />, label: '拍照记账', onClick: () => { setAiMode('camera'); setAiModalOpen(true) } },
+                ]
+              }} trigger={['click']}>
+                <Button type="primary" icon={<PlusOutlined />} size="small">记一笔</Button>
+              </Dropdown>
             </div>
           </div>
 
@@ -688,6 +708,13 @@ const Records: React.FC<RecordsProps> = ({
         onEdit={(record) => { setDetailVisible(false); handleEdit(record) }}
         onDelete={(id) => handleDelete(id)}
         onRefund={(record) => { setDetailVisible(false); handleRefund(record) }}
+      />
+
+      <AIRecordModal
+        open={aiModalOpen}
+        mode={aiMode}
+        onClose={() => setAiModalOpen(false)}
+        onSuccess={() => { dispatch(fetchRecords(currentLedgerId as any)); dispatch(fetchAccounts(currentLedgerId as any)) }}
       />
     </div>
   )

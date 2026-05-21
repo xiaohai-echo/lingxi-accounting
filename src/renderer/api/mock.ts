@@ -644,7 +644,6 @@ const mockApi = {
   deleteRecord: (id: number): Promise<void> => {
     const record = mockRecords.find(r => r.id === id)
     const idx = mockRecords.findIndex(r => r.id === id)
-    if (idx !== -1) mockRecords[idx].isDeleted = 1
     if (record && !record.isDeleted) {
       applyRecordToBalance(record, true)
       if (record.type === 'expense' && record.refundAmount) {
@@ -654,6 +653,7 @@ const mockApi = {
         }
       }
     }
+    if (idx !== -1) mockRecords[idx].isDeleted = 1
     saveCurrentUserData()
     return Promise.resolve()
   },

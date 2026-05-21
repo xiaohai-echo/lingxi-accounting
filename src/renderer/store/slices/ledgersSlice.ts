@@ -28,7 +28,7 @@ export const addLedger = createAsyncThunk(
   'ledgers/addLedger',
   async (ledger: Omit<Ledger, 'id' | 'createdAt' | 'updatedAt'>) => {
     const id = await getApi().addLedger(ledger)
-    getApi().addLog('ledger', '创建账本', ledger.name)
+    getApi().addLog('add_ledger', `新增账本 ${ledger.name}`)
     return { ...ledger, id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
   }
 )
@@ -37,7 +37,7 @@ export const updateLedger = createAsyncThunk(
   'ledgers/updateLedger',
   async ({ id, ledger }: { id: number; ledger: Partial<Omit<Ledger, 'id' | 'createdAt' | 'updatedAt'>> }) => {
     await getApi().updateLedger(id, ledger)
-    getApi().addLog('ledger', '编辑账本', ledger.name || undefined)
+    getApi().addLog('edit_ledger', `编辑账本 ${ledger.name || '#' + id}`)
     return { id, ...ledger }
   }
 )
@@ -45,8 +45,11 @@ export const updateLedger = createAsyncThunk(
 export const deleteLedger = createAsyncThunk(
   'ledgers/deleteLedger',
   async (id: number) => {
-    await getApi().deleteLedger(id)
-    getApi().addLog('ledger', '删除账本', '#' + String(id))
+    const api = getApi()
+    const leds = await api.getLedgers()
+    const led = leds.find((l: any) => l.id === id)
+    await api.deleteLedger(id)
+    api.addLog('delete_ledger', `删除账本 ${led?.name || '#' + id}`)
     return id
   }
 )
@@ -55,7 +58,7 @@ export const mergeLedger = createAsyncThunk(
   'ledgers/mergeLedger',
   async ({ sourceId, targetId }: { sourceId: number; targetId: number }) => {
     const result = await getApi().mergeLedger(sourceId, targetId)
-    getApi().addLog('ledger', '合并账本', '#' + String(sourceId) + ' -> #' + String(targetId))
+    getApi().addLog('merge_ledger', `合并账本 #${sourceId} → #${targetId}`)
     return { sourceId, targetId, ...result }
   }
 )

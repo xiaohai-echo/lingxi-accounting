@@ -43,7 +43,10 @@ export const updateBudget = createAsyncThunk(
   'budgets/updateBudget',
   async ({ id, budget }: { id: number; budget: Partial<Omit<Budget, 'id' | 'createdAt' | 'updatedAt'>> }) => {
     await getApi().updateBudget(id, budget)
-    getApi().addLog('edit_budget', `编辑预算 #${id}`)
+    const changes: string[] = []
+    if (budget.amount !== undefined) changes.push(`金额→¥${budget.amount.toFixed(2)}`)
+    if (budget.period !== undefined) changes.push(`周期→${budget.period}`)
+    getApi().addLog('edit_budget', `编辑预算 #${id}`, changes.join(', ') || undefined)
     return { id, ...budget }
   }
 )
@@ -51,8 +54,11 @@ export const updateBudget = createAsyncThunk(
 export const deleteBudget = createAsyncThunk(
   'budgets/deleteBudget',
   async (id: number) => {
-    await getApi().deleteBudget(id)
-    getApi().addLog('delete_budget', `删除预算 #${id}`)
+    const api = getApi()
+    const buds = await api.getBudgets()
+    const bud = buds.find((b: any) => b.id === id)
+    await api.deleteBudget(id)
+    api.addLog('delete_budget', `删除预算 ${bud ? `¥${bud.amount.toFixed(2)}` : '#' + id}`, bud ? `${bud.period} ${bud.year}年` : undefined)
     return id
   }
 )

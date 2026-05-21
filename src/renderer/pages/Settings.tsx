@@ -218,7 +218,7 @@ export default function Settings({ isDark, onToggleTheme }: { isDark: boolean; o
   }
 
   // Sync
-  const handleSync = async () => { setSyncLoading(true); try { const api = getApi(); if (api.syncData) { const r = await api.syncData(); if (r.success) { msgApi.success('数据同步成功'); setLastSyncAt(r.lastSyncAt) } else msgApi.error(r.message) } } catch { msgApi.error('同步失败') } finally { setSyncLoading(false) } }
+  const handleSync = async () => { setSyncLoading(true); try { const api = getApi(); if (api.syncData) { const r = await api.syncData(); if (r.success) { api.addLog('sync', '同步数据'); msgApi.success('数据同步成功'); setLastSyncAt(r.lastSyncAt) } else msgApi.error(r.message) } } catch { msgApi.error('同步失败') } finally { setSyncLoading(false) } }
 
   // Backup
   const handleManualBackup = async () => {
@@ -299,6 +299,7 @@ export default function Settings({ isDark, onToggleTheme }: { isDark: boolean; o
       }
       for (const k of keysToRemove) localStorage.removeItem(k)
       if (currentUser?.id===1) await getApi().login('demo','demo123')
+      getApi().addLog('restore', '恢复演示数据')
       msgApi.success('演示数据已恢复，即将刷新')
       setTimeout(() => window.location.reload(), 800)
     } catch { msgApi.error('恢复失败') }

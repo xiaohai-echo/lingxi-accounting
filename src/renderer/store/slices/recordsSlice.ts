@@ -43,7 +43,17 @@ export const updateRecord = createAsyncThunk(
   'records/updateRecord',
   async ({ id, record }: { id: number; record: Partial<Omit<Record, 'id' | 'updatedAt'> & { createdAt?: string }> }) => {
     await getApi().updateRecord(id, record)
-    getApi().addLog('edit_record', `编辑记录 #${id}`, record.note || undefined)
+    const changes: string[] = []
+    if (record.amount !== undefined) changes.push(`金额→¥${record.amount.toFixed(2)}`)
+    if (record.type !== undefined) changes.push(`类型→${record.type === 'income' ? '收入' : record.type === 'expense' ? '支出' : '转账'}`)
+    if (record.categoryId !== undefined) {
+      const cats = await getApi().getCategories()
+      const catName = cats.find((c: any) => c.id === record.categoryId)?.name
+      if (catName) changes.push(`类别→${catName}`)
+    }
+    if (record.date !== undefined) changes.push(`日期→${record.date}`)
+    if (record.note !== undefined) changes.push(`备注→${record.note}`)
+    getApi().addLog('edit_record', `编辑记录 #${id}`, changes.join(', ') || undefined)
     return { id, ...record }
   }
 )
@@ -51,8 +61,13 @@ export const updateRecord = createAsyncThunk(
 export const deleteRecord = createAsyncThunk(
   'records/deleteRecord',
   async (id: number) => {
-    await getApi().deleteRecord(id)
-    getApi().addLog('delete_record', `删除记录 #${id}`)
+    const api = getApi()
+    const recs = await api.getRecords()
+    const rec = recs.find((r: any) => r.id === id)
+    const typeLabel = rec?.type === 'income' ? '收入' : rec?.type === 'expense' ? '支出' : '转账'
+    const detail = rec ? `${typeLabel} ¥${rec.amount.toFixed(2)}${rec.note ? ' ' + rec.note : ''}` : undefined
+    await api.deleteRecord(id)
+    api.addLog('delete_record', `删除记录 #${id}`, detail)
     return id
   }
 )

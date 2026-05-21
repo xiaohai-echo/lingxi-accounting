@@ -23,7 +23,13 @@ const actionConfig: Record<string, { color: string; label: string }> = {
   add_budget: { color: '#52c41a', label: '新增预算' },
   edit_budget: { color: '#1677FF', label: '编辑预算' },
   delete_budget: { color: '#ff4d4f', label: '删除预算' },
+  add_ledger: { color: '#52c41a', label: '新增账本' },
+  edit_ledger: { color: '#1677FF', label: '编辑账本' },
+  delete_ledger: { color: '#ff4d4f', label: '删除账本' },
+  merge_ledger: { color: '#667eea', label: '合并账本' },
   ai_record: { color: '#667eea', label: 'AI记账' },
+  auth: { color: '#667eea', label: '认证' },
+  edit_profile: { color: '#1677FF', label: '修改信息' },
   export: { color: '#1677FF', label: '导出数据' },
   import: { color: '#52c41a', label: '导入数据' },
   backup: { color: '#1677FF', label: '备份' },
@@ -32,6 +38,7 @@ const actionConfig: Record<string, { color: string; label: string }> = {
   clear: { color: '#ff4d4f', label: '清除数据' },
   sync: { color: '#1677FF', label: '同步数据' },
   login: { color: '#667eea', label: '登录' },
+  ledger: { color: '#667eea', label: '账本操作' },
 }
 
 interface LogsProps {

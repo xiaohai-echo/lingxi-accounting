@@ -35,7 +35,12 @@ export const updateCategory = createAsyncThunk(
   'categories/updateCategory',
   async ({ id, category }: { id: number; category: Partial<Omit<Category, 'id' | 'createdAt' | 'updatedAt'>> }) => {
     await getApi().updateCategory(id, category)
-    getApi().addLog('edit_category', `编辑类别 #${id}`, category.name || undefined)
+    const changes: string[] = []
+    if (category.name !== undefined) changes.push(`名称→${category.name}`)
+    if (category.type !== undefined) changes.push(`类型→${category.type}`)
+    if (category.icon !== undefined) changes.push(`图标→${category.icon}`)
+    if (category.color !== undefined) changes.push(`颜色→${category.color}`)
+    getApi().addLog('edit_category', `编辑类别 #${id}`, changes.join(', ') || category.name || undefined)
     return { id, ...category }
   }
 )
@@ -43,8 +48,11 @@ export const updateCategory = createAsyncThunk(
 export const deleteCategory = createAsyncThunk(
   'categories/deleteCategory',
   async (id: number) => {
-    await getApi().deleteCategory(id)
-    getApi().addLog('delete_category', `删除类别 #${id}`)
+    const api = getApi()
+    const cats = await api.getCategories()
+    const cat = cats.find((c: any) => c.id === id)
+    await api.deleteCategory(id)
+    api.addLog('delete_category', `删除类别 ${cat?.name || '#' + id}`, cat ? `类型: ${cat.type}` : undefined)
     return id
   }
 )

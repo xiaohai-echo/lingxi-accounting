@@ -35,7 +35,11 @@ export const updateAccount = createAsyncThunk(
   'accounts/updateAccount',
   async ({ id, account }: { id: number; account: Partial<Omit<Account, 'id' | 'createdAt' | 'updatedAt'>> }) => {
     await getApi().updateAccount(id, account)
-    getApi().addLog('edit_account', `编辑账户 #${id}`, account.name || undefined)
+    const changes: string[] = []
+    if (account.name !== undefined) changes.push(`名称→${account.name}`)
+    if (account.balance !== undefined) changes.push(`余额→¥${account.balance.toFixed(2)}`)
+    if (account.type !== undefined) changes.push(`类型→${account.type}`)
+    getApi().addLog('edit_account', `编辑账户 #${id}`, changes.join(', ') || account.name || undefined)
     return { id, ...account }
   }
 )
@@ -43,8 +47,11 @@ export const updateAccount = createAsyncThunk(
 export const deleteAccount = createAsyncThunk(
   'accounts/deleteAccount',
   async (id: number) => {
-    await getApi().deleteAccount(id)
-    getApi().addLog('delete_account', `删除账户 #${id}`)
+    const api = getApi()
+    const accs = await api.getAccounts()
+    const acc = accs.find((a: any) => a.id === id)
+    await api.deleteAccount(id)
+    api.addLog('delete_account', `删除账户 ${acc?.name || '#' + id}`, acc ? `类型: ${acc.type} 余额: ¥${acc.balance.toFixed(2)}` : undefined)
     return id
   }
 )

@@ -8,7 +8,8 @@ import {
   SendOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  EditOutlined
 } from '@ant-design/icons'
 import type { RootState, AppDispatch } from '../store'
 import { store } from '../store'
@@ -32,7 +33,7 @@ export type AIMode = 'text' | 'screenshot' | 'camera' | 'voice'
 
 interface AIRecordModalProps {
   open: boolean
-  mode: AIMode
+  mode?: AIMode
   onClose: () => void
   onSuccess: () => void
 }
@@ -162,13 +163,16 @@ function stopMediaStream(stream: MediaStream | null): void {
 
 // ==================== Component ====================
 
-const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSuccess }) => {
+const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode: externalMode, onClose, onSuccess }) => {
   const { message, notification } = App.useApp()
   const dispatch = useDispatch<AppDispatch>()
 
   const accounts = useSelector((state: RootState) => state.accounts.items)
   const categories = useSelector((state: RootState) => state.categories.items)
   const currentLedgerId = useSelector((state: RootState) => state.ledgers.currentLedgerId)
+
+  const [internalMode, setInternalMode] = useState<AIMode | null>(null)
+  const mode = externalMode ?? internalMode
 
   // Shared state
   const [loading, setLoading] = useState(false)
@@ -395,7 +399,7 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
                   filePath ? `附件：${filePath}` : '',
                 ].filter(Boolean).join('，'),
           rawFilePath: filePath,
-          source: MODE_SOURCE[mode],
+          source: mode ? MODE_SOURCE[mode] : 'ai_text',
           createdAt: recordInput.time
             ? `${recordInput.date}T${recordInput.time}`
             : new Date().toISOString()
@@ -1179,18 +1183,56 @@ const AIRecordModal: React.FC<AIRecordModalProps> = ({ open, mode, onClose, onSu
     }
   }
 
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches
+
+  const MODE_CARDS: { key: AIMode; icon: React.ReactNode; label: string; desc: string; color: string }[] = [
+    { key: 'text', icon: <EditOutlined style={{ fontSize: 28 }} />, label: '文字记账', desc: '输入描述，AI智能识别', color: '#1677ff' },
+    { key: 'voice', icon: <AudioOutlined style={{ fontSize: 28 }} />, label: '语音记账', desc: '说话即可记账', color: '#52c41a' },
+    { key: 'screenshot', icon: <PictureOutlined style={{ fontSize: 28 }} />, label: '图片记账', desc: '上传截图识别', color: '#fa8c16' },
+    { key: 'camera', icon: <CameraOutlined style={{ fontSize: 28 }} />, label: '拍照记账', desc: '拍照识别账单', color: '#eb2f96' },
+  ]
+
+  const renderModeSelector = () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: '8px 0' }}>
+      {MODE_CARDS.map(card => (
+        <div
+          key={card.key}
+          onClick={() => setInternalMode(card.key)}
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            padding: '20px 12px', borderRadius: 12, cursor: 'pointer',
+            background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'}`,
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = card.color; e.currentTarget.style.transform = 'translateY(-2px)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'none' }}
+        >
+          <div style={{ color: card.color, marginBottom: 8 }}>{card.icon}</div>
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{card.label}</div>
+          <div style={{ fontSize: 12, opacity: 0.55 }}>{card.desc}</div>
+        </div>
+      ))}
+    </div>
+  )
+
   return (
     <Modal
-      title={`AI 智能记账 - ${MODE_LABELS[mode] || mode}`}
+      title={mode ? `AI 智能记账 - ${MODE_LABELS[mode]}` : 'AI 智能记账'}
       open={open}
       onCancel={onClose}
-      footer={null}
+      footer={mode ? null : undefined}
       width={520}
       destroyOnHidden
     >
-      <Spin spinning={loading} tip={loadingText || undefined}>
-        {renderContent()}
-      </Spin>
+      {mode ? (
+        <Spin spinning={loading} tip={loadingText || undefined}>
+          {renderContent()}
+        </Spin>
+      ) : (
+        renderModeSelector()
+      )}
     </Modal>
   )
 }

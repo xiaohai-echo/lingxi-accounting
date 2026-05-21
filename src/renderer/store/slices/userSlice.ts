@@ -63,6 +63,11 @@ export const updateProfile = createAsyncThunk<void, { id: number; data: Partial<
   async ({ id, data }) => {
     const api = getApi()
     await api.updateUser(id, data)
+    const changes: string[] = []
+    if (data.nickname !== undefined) changes.push(`昵称→${data.nickname}`)
+    if (data.password !== undefined) changes.push('修改密码')
+    if (data.avatar !== undefined) changes.push('更换头像')
+    getApi().addLog('edit_profile', `修改个人信息`, changes.join(', ') || undefined)
   }
 )
 
